@@ -13,9 +13,10 @@ enum Silhouette { SOLDIER, WHEELED_VEHICLE, TRACKED_VEHICLE }
 @export_range(1, 100000) var max_hp: int = 100
 ## Cells per second.
 @export_range(0.05, 20.0) var speed: float = 1.0
-## Fraction of incoming damage absorbed (0 = none, 0.9 = 90 %).
-## Milestone 3 will add damage types; this stays the generic resistance.
-@export_range(0.0, 0.9) var armor: float = 0.0
+## Armour class: damage taken = amount x Damage.MULTIPLIER[damage type][armor_class].
+@export var armor_class: Damage.ArmorClass = Damage.ArmorClass.NONE
+## Targeting.GROUND or Targeting.AIR: which weapons can engage this unit.
+@export_flags("Ground", "Air") var target_layer: int = Targeting.GROUND
 ## HQ damage when the unit reaches the base.
 @export_range(0, 1000) var base_damage: int = 1
 ## Credits awarded when the unit is destroyed.
@@ -39,8 +40,8 @@ func validate() -> PackedStringArray:
 		errors.append("enemy '%s' has max_hp <= 0" % id)
 	if speed <= 0.0:
 		errors.append("enemy '%s' has speed <= 0" % id)
-	if armor < 0.0 or armor > 0.9:
-		errors.append("enemy '%s' armor outside [0, 0.9]" % id)
+	if target_layer != Targeting.GROUND and target_layer != Targeting.AIR:
+		errors.append("enemy '%s' must be on exactly one target layer" % id)
 	if base_damage < 0 or reward < 0:
 		errors.append("enemy '%s' has negative base_damage or reward" % id)
 	return errors

@@ -6,6 +6,7 @@
 script = ExtResource("1_sdata")
 id = &"sandbags"
 display_name = "Sandbags"
+short_name = "SANDBAGS"
 description = "Cheap, fast cover. Stops infantry and wheeled vehicles. Heavy tracked vehicles roll straight over it."
 category = 0
 cost = 10

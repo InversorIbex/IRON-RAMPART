@@ -177,7 +177,7 @@ func test_damage_armor_death_and_reward() -> void:
 	var s := H.make_session(H.OPEN_LAYOUT, 0)
 	s.enemies.enemy_killed.connect(func(_e: Enemy) -> void: _events.append("killed"))
 	var tank := s.enemies.spawn(_data("heavy_tank"), Vector2i(0, 2))
-	assert_true(absf(s.enemies.damage(tank, 100.0) - 40.0) < 0.001, "60% armor")
+	assert_true(absf(s.enemies.damage(tank, 100.0) - 40.0) < 0.001, "GENERIC vs HEAVY = 0.40")
 	assert_true(absf(tank.hp - 560.0) < 0.001)
 	var inf := s.enemies.spawn(_data("infantry"), Vector2i(0, 2))
 	s.enemies.damage(inf, 1000.0)

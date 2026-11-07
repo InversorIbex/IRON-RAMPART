@@ -10,10 +10,10 @@ todas las rutas. Detalle: `docs/GAME_DESIGN.md`.
 
 ## Estado del proyecto (actualiza esta sección al cerrar cada sesión)
 
-- Hitos 0, 1 y 2 ✅ en escritorio con Godot 4.7.2 (sesión 3): 60/60 pruebas, recorridos visuales 14/14 y 15/15,
-  benchmark 10–100 enemigos. Pendiente: Android real (Hito 5).
-- **D-012 (construir durante el combate) espera confirmación del usuario.**
-- Siguiente: Hito 3 (torretas y combate) — solo cuando el usuario lo pida. Ver `docs/ROADMAP.md`.
+- Hitos 0–3 ✅ en escritorio con Godot 4.7.2 (sesión 4): 96/96 pruebas, recorridos visuales 14/14, 15/15 y 20/20,
+  benchmarks de enemigos y combate. Pendiente: Android real (Hito 5).
+- Construcción en combate **confirmada** con recargo del 25 % (D-015).
+- Siguiente: Hito 4 (oleadas y progresión) — solo cuando el usuario lo pida. Ver `docs/ROADMAP.md`.
 - Pendientes y riesgos: `docs/ROADMAP.md`.
 
 ## Comandos
@@ -25,8 +25,9 @@ godot --headless --path . --quit-after 300                    # smoke de arranqu
 godot --path .                                                # jugar
 # Recorrido E2E con render + capturas (Linux sin pantalla: Xvfb)
 IR_SHOTS_DIR=/tmp/shots xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --resolution 1920x1080 \
-  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd     # y drive_enemies.gd
-godot --headless --path . --script res://tests/perf/bench_enemies.gd          # benchmark (añade -- --render con Xvfb)
+  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd     # y drive_enemies.gd, drive_combat.gd
+godot --headless --path . --script res://tests/perf/bench_enemies.gd          # benchmarks (y bench_combat.gd;
+                                                                              # añade -- --render con Xvfb)
 ```
 
 Verificados el 2026-11-07 con Godot 4.7.2-stable (todos exit 0). En un contenedor cloud Godot no está
@@ -44,6 +45,10 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
 - Enemigos: lógica en `Enemy`/`EnemyRoster` (RefCounted, `update(delta)`), vista en `scenes/enemies/enemy_view.tscn`
   sincronizada por `EnemyLayer`. Un enemigo nunca abandona su segmento `cell → next_cell`; construcción rechaza ambas celdas.
 - Toda construcción/retirada pasa por `ConstructionService` (`evaluate` es de solo lectura; un rechazo no cambia nada).
+  El precio (con recargo de combate) sale solo de `price_of()`; `build` cobra el `cost` del mismo `Check` mostrado.
+- Combate: `CombatSystem` (RefCounted) sigue torretas por señales del grid; todo daño pasa por
+  `EnemyRoster.damage(enemy, amount, type)` (tabla `Damage`); nunca toques `hp` ni créditos desde otro sitio.
+  Proyectiles deterministas guiados, sin físicas; búsqueda de objetivo ≤ 10 Hz por torreta (D-017).
 - Datos: niveles en `data/levels/*.json` (layout ASCII), estructuras en `data/structures/*.tres` registradas en
   `StructureCatalog.PATHS`.
 
@@ -65,6 +70,9 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
 - Señales hacia métodos, no lambdas que capturen la sesión (crean ciclos de referencias → fugas).
 - Una prueba nueva debe fallar con el código defectuoso: verifícalo (mutación) en los casos críticos.
 - Benchmarks: mide nuestro código por separado del render; en contenedor el render es por software (no extrapolar a móvil).
+  Si algo corre GDScript en `_draw()` cada frame, mídelo también (no lo atribuyas al rasterizador).
+- `:=` no infiere tipos desde `Variant` (elementos de `Array`/`Dictionary` sin tipo): declara el tipo explícito.
+- Suites de prueba ≤ 20 métodos públicos (gdlint): divide por tema con una base común (`combat_test_base.gd`).
 
 ## Reglas para añadir sistemas
 

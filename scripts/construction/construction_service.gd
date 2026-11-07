@@ -38,6 +38,10 @@ class Check:
 	var broken_routes: Array[Dictionary] = []
 	var placement: Placement = null
 	var refund: int = 0
+	## Price for this placement right now (base cost + surcharge). Shown in
+	## the preview and charged by build(): one number, no divergence.
+	var cost: int = 0
+	var surcharge: int = 0
 
 	func is_ok() -> bool:
 		return reason == 0
@@ -45,6 +49,9 @@ class Check:
 
 var build_enabled: bool = true
 var removal_enabled: bool = true
+## Extra fraction charged on new construction (set by GameSession: the level's
+## combat surcharge during COMBAT, 0 otherwise).
+var surcharge_ratio: float = 0.0
 
 var _grid: GridModel
 var _nav: NavGrid
@@ -80,6 +87,15 @@ static func origin_for_cell(data: StructureData, cell: Vector2i) -> Vector2i:
 	return cell - (data.footprint - Vector2i.ONE) / 2
 
 
+## Current price of a structure, including any surcharge. Single source of truth
+## for the HUD, the preview and the charge.
+func price_of(data: StructureData) -> int:
+	if data == null:
+		return 0
+	# Small epsilon so 100 x 1.25 = 125 never becomes 126 through float error.
+	return ceili(data.cost * (1.0 + surcharge_ratio) - 0.0001)
+
+
 ## Read-only check. Safe to call every time the preview moves.
 func evaluate(data: StructureData, origin: Vector2i) -> Check:
 	var check := Check.new()
@@ -89,6 +105,8 @@ func evaluate(data: StructureData, origin: Vector2i) -> Check:
 		check.reason = Reason.NO_STRUCTURE
 		return check
 	check.cells = GridModel.footprint_cells(origin, data.footprint)
+	check.cost = price_of(data)
+	check.surcharge = check.cost - data.cost
 	if not build_enabled:
 		check.reason = Reason.PHASE_LOCKED
 		return check
@@ -110,7 +128,7 @@ func evaluate(data: StructureData, origin: Vector2i) -> Check:
 			if under_units.has(cell):
 				check.reason = Reason.OCCUPIED_BY_UNIT
 				return check
-	if not _wallet.can_afford(data.cost):
+	if not _wallet.can_afford(check.cost):
 		check.reason = Reason.INSUFFICIENT_CREDITS
 		return check
 	if data.blocks_mask != MovementClass.NONE:
@@ -126,10 +144,13 @@ func build(data: StructureData, origin: Vector2i) -> Check:
 	var check := evaluate(data, origin)
 	if not check.is_ok():
 		return check
-	if not _wallet.spend(data.cost):
+	# Validation and payment happen in the same call with the same price; any
+	# failure returns before the grid is touched, so a rejection costs nothing.
+	if not _wallet.spend(check.cost):
 		check.reason = Reason.INSUFFICIENT_CREDITS
 		return check
 	check.placement = _grid.add_placement(data, origin)
+	check.placement.paid = check.cost
 	structure_built.emit(check.placement)
 	return check
 

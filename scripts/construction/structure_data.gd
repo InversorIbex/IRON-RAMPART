@@ -8,6 +8,8 @@ enum Category { BARRIER, TURRET, SUPPORT }
 
 @export var id: StringName = &""
 @export var display_name: String = ""
+## Compact label for the build bar (falls back to display_name).
+@export var short_name: String = ""
 @export_multiline var description: String = ""
 @export var category: Category = Category.BARRIER
 @export_range(0, 100000) var cost: int = 0
@@ -22,6 +24,8 @@ enum Category { BARRIER, TURRET, SUPPORT }
 @export var placeholder_color: Color = Color.WHITE
 ## Optional final sprite. When null, the placeholder renderer is used.
 @export var sprite: Texture2D
+## Weapon of a turret (category TURRET). Null for barriers.
+@export var turret: TurretData
 
 
 ## Returns a list of human-readable problems. Empty list = valid.
@@ -41,8 +45,17 @@ func validate() -> PackedStringArray:
 		errors.append("structure '%s' has invalid blocks_mask %d" % [id, blocks_mask])
 	if refund_ratio < 0.0 or refund_ratio > 1.0:
 		errors.append("structure '%s' has refund_ratio outside [0, 1]" % id)
+	if category == Category.TURRET and turret == null:
+		errors.append("turret structure '%s' has no TurretData" % id)
+	if turret != null:
+		errors.append_array(turret.validate())
 	return errors
 
 
+func label() -> String:
+	return short_name if not short_name.is_empty() else display_name
+
+
+## Refunds are based on the base cost: the combat surcharge is never refunded.
 func refund_amount() -> int:
 	return int(floor(cost * refund_ratio))

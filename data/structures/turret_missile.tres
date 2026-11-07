@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="StructureData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/construction/structure_data.gd" id="1_sdata"]
+[ext_resource type="Resource" path="res://data/turrets/missile.tres" id="2_weapon"]
+
+[resource]
+script = ExtResource("1_sdata")
+id = &"turret_missile"
+display_name = "Missile Launcher"
+short_name = "MISSILES"
+description = "Guided missile pod. Slow, heavy explosive warheads with splash. Hunts the strongest armour in range."
+category = 1
+cost = 180
+max_hp = 300
+footprint = Vector2i(1, 1)
+blocks_mask = 7
+refund_ratio = 0.75
+placeholder_color = Color(0.30, 0.34, 0.27, 1)
+turret = ExtResource("2_weapon")

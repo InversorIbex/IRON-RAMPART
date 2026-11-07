@@ -6,11 +6,28 @@ extends Camera2D
 
 const MIN_ZOOM := 1.0
 const MAX_ZOOM := 3.0
+const SHAKE_MAX_PX := 7.0
+const SHAKE_DECAY := 6.0
 
 ## World rect the view may travel over. Extended to the right/top by the HUD
 ## size so every map cell can be brought out from under the panels.
 var _bounds: Rect2
 var _view: Vector2
+## Screen shake (cosmetic, decays; never moves the logical camera position).
+var _shake: float = 0.0
+
+
+func add_shake(strength: float) -> void:
+	_shake = minf(1.0, _shake + strength * 0.5)
+
+
+func _process(delta: float) -> void:
+	if _shake <= 0.0:
+		return
+	_shake = maxf(0.0, _shake - SHAKE_DECAY * delta * _shake - delta)
+	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * SHAKE_MAX_PX * _shake / zoom.x
+	if _shake == 0.0:
+		offset = Vector2.ZERO
 
 
 func reset_view(view_size: Vector2, hud_right: float, hud_top: float) -> void:

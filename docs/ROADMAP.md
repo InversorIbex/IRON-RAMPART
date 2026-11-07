@@ -44,10 +44,23 @@ Criterio: el jugador puede construir obstáculos y modificar caminos sin bloquea
 
 Criterio: los enemigos recorren correctamente el laberinto construido por el jugador. **Cumplido en escritorio.**
 
-## Hito 3 — Torretas y combate ⬜
+## Hito 3 — Torretas y combate ✅ (escritorio; dispositivo pendiente → Hito 5)
 
-`TurretData`, adquisición de objetivos (primero/más avanzado al inicio), proyectiles deterministas
-(sin física), daño directo/área, efectos básicos. Pruebas: casos 9 y 10.
+- ✅ Auditoría de integración (TESTING.md sesión 4); bug "disparo tras la derrota" corregido
+- ✅ Construcción en combate confirmada + recargo 25 % configurable, visible en HUD y fantasma (D-015)
+- ✅ Modelo de daño tipo × blindaje con una sola puerta de daño (D-016)
+- ✅ HMG, lanzamisiles y AA por datos; giro, cadencia, alcance, prioridades, capas GROUND/AIR
+- ✅ Proyectiles deterministas guiados; impacto único; objetivos perdidos; daño de área con caída
+- ✅ Recompensas, barras de vida, efectos de disparo/impacto/explosión/destrucción, sacudida de cámara
+- ✅ Contraste de enemigos corregido
+- ✅ Consultar una torreta colocada (toque sin herramienta: alcance + estadísticas)
+- ✅ 96 pruebas (36 nuevas) + 3 recorridos visuales 49/49 + benchmark de combate
+- ⬜ AA contra unidades aéreas reales (no existen hasta el mundo 3)
+- ⬜ Mejoras de torretas y cambio de prioridad en partida
+- ⬜ Rendimiento y "sensación" en dispositivo Android real (Hito 5)
+
+Criterio: el jugador puede destruir enemigos colocando defensas estratégicamente. **Cumplido en escritorio**
+(partida simulada: 10/10 enemigos destruidos con el HQ intacto; sin defensas el HQ pierde 17).
 
 ## Hito 4 — Oleadas y economía ⬜
 
@@ -72,12 +85,12 @@ Sesiones de prueba, ajuste de dificultad/economía, claridad visual, lista de me
 | R-3 | ~~Enemigos atrapados al construir en combate~~ | Resuelto: validación incluye enemigos vivos + estado BLOCKED defensivo |
 | R-4 | `.json` no incluidos en el export | Filtro `*.json` en el preset (D-005) |
 | R-5 | Rendimiento con muchas unidades | Lógica medida: 0,4 ms/frame con 100. Render medido solo con rasterizador software: medir en GPU móvil (Hito 5) |
-| R-6 | Construir en combate cambia el diseño (D-012) | Pendiente de confirmación; configurable por nivel |
+| R-6 | ~~Construir en combate (D-012)~~ | Confirmado por el usuario con recargo 25 % (D-015) |
+| R-7 | Equilibrio: la columna de prueba muere entera con 4 torretas (presupuesto de demo 900 CR) | Hito 4/6: oleadas reales y economía con presupuesto 300 |
 
 ## Tareas pendientes inmediatas
 
-1. **Confirmar D-012** (construir durante el combate) o desactivarlo en `mission_01.json`.
-2. Hito 3: `TurretData`, adquisición de objetivos, proyectiles deterministas, tipos de daño vs blindaje, efectos.
+1. Hito 4 (cuando se pida): `WaveData`/`WaveManager`, 5 oleadas, victoria, sustituir `TestAssault`.
+2. Hito 5 (adelantable): APK de depuración para medir FPS real y probar gestos y legibilidad en un teléfono.
 3. CI (GitHub Actions) con Godot 4.7.2 headless: `run_tests.gd` + lint.
-4. Hito 5 (adelantable): APK de depuración para medir FPS y probar gestos en un teléfono real.
-5. Cosmético: franja del menú; etiqueta "IN" tapada por rutas; enemigos pequeños y de bajo contraste sobre arena.
+4. Cosmético: franja del menú; etiqueta "IN" tapada por rutas.

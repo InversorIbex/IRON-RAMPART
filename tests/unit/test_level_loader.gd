@@ -37,7 +37,7 @@ func test_mission_01_loads() -> void:
 	assert_eq(level.base_cells.size(), 4)
 	assert_true(level.base_cells.has(level.goal_cell))
 	assert_eq(level.movement_mask, MovementClass.ALL_GROUND)
-	assert_eq(level.available_structures.size(), 3)
+	assert_eq(level.available_structures.size(), 6, "3 barriers + 3 turrets")
 
 
 func test_goal_is_base_cell_closest_to_centroid() -> void:

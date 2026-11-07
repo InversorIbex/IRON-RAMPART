@@ -23,6 +23,8 @@ var available_structures: PackedStringArray = PackedStringArray()
 var allow_build_during_combat: bool = true
 ## Whether the player may remove structures during combat.
 var allow_remove_during_combat: bool = false
+## Extra fraction charged for new construction during combat (0.25 = +25 %).
+var combat_build_surcharge: float = 0.25
 
 
 func terrain_at(cell: Vector2i) -> int:

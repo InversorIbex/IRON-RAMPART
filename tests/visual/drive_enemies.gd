@@ -43,7 +43,10 @@ func _main() -> void:
 	await _shot("10_assault_moving")
 
 	# --- Build during combat on the live route; units must re-route ------------
-	_click(_find_button(hud, "CONCRETE WALL").get_global_rect().get_center())
+	# Test budget: combat builds carry the +25 % surcharge; this check is about
+	# routing, not economy (economy is covered by drive_combat and unit tests).
+	s.wallet.earn(400)
+	_click(_find_button(hud, "WALL").get_global_rect().get_center())
 	await _frames(2)
 	var built := 0
 	for y in range(3, 14):

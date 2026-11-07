@@ -15,6 +15,7 @@ var nav: NavGrid
 var wallet: Wallet
 var construction: ConstructionService
 var enemies: EnemyRoster
+var combat: CombatSystem
 var phase: int = Phase.BUILD
 var base_hp: int
 
@@ -27,6 +28,7 @@ func _init(p_level: LevelData) -> void:
 	enemies = EnemyRoster.new(grid, nav)
 	construction = ConstructionService.new(grid, nav, wallet, level.spawn_cells, level.movement_mask)
 	construction.set_units(enemies)
+	combat = CombatSystem.new(grid, enemies, nav)
 	enemies.enemy_killed.connect(_on_enemy_killed)
 	enemies.enemy_reached_base.connect(_on_enemy_reached_base)
 	base_hp = level.base_max_hp
@@ -37,6 +39,9 @@ func _init(p_level: LevelData) -> void:
 func tick(delta: float) -> void:
 	if phase == Phase.BUILD or phase == Phase.COMBAT:
 		enemies.update(delta)
+		# The HQ may fall during enemies.update(): no shot is fired after defeat.
+		if not is_over():
+			combat.update(delta)
 
 
 func set_phase(new_phase: int) -> void:
@@ -56,6 +61,7 @@ func _apply_phase_rules() -> void:
 			or (phase == Phase.COMBAT and level.allow_build_during_combat)
 	construction.removal_enabled = phase == Phase.BUILD \
 			or (phase == Phase.COMBAT and level.allow_remove_during_combat)
+	construction.surcharge_ratio = level.combat_build_surcharge if phase == Phase.COMBAT else 0.0
 
 
 func _on_enemy_killed(enemy: Enemy) -> void:
@@ -69,3 +75,4 @@ func _on_enemy_reached_base(enemy: Enemy) -> void:
 	base_hp_changed.emit(base_hp, level.base_max_hp)
 	if base_hp == 0:
 		set_phase(Phase.DEFEAT)
+		combat.clear_projectiles()

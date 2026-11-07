@@ -89,6 +89,11 @@ static func parse_dict(d: Dictionary, source: String = "<memory>") -> Result:
 	else:
 		level.allow_build_during_combat = bool(rules.get("allow_build_during_combat", true))
 		level.allow_remove_during_combat = bool(rules.get("allow_remove_during_combat", false))
+		var surcharge: Variant = rules.get("combat_build_surcharge", 0.25)
+		if not _is_number(surcharge) or float(surcharge) < 0.0 or float(surcharge) > 5.0:
+			errors.append("'rules.combat_build_surcharge' must be a number in [0, 5] (got %s)" % [surcharge])
+		else:
+			level.combat_build_surcharge = float(surcharge)
 
 	# --- Layout ---
 	_parse_layout(d.get("layout"), level, errors)

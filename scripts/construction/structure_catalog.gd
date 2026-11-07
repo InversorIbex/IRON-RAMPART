@@ -9,6 +9,9 @@ const PATHS := {
 	&"sandbags": "res://data/structures/sandbags.tres",
 	&"concrete_wall": "res://data/structures/concrete_wall.tres",
 	&"antitank_barrier": "res://data/structures/antitank_barrier.tres",
+	&"turret_hmg": "res://data/structures/turret_hmg.tres",
+	&"turret_missile": "res://data/structures/turret_missile.tres",
+	&"turret_aa": "res://data/structures/turret_aa.tres",
 }
 
 

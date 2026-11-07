@@ -23,9 +23,13 @@ Fase de construcción → iniciar oleada → combate (ajustes limitados) → rec
   movimiento presente en la misión**. El rechazo explica la clase afectada y marca el spawn en rojo.
 - La ruta actual de cada clase se dibuja en el mapa (arena = infantería, oro = ruedas, rojo = orugas).
 - Retirada: solo en fase de construcción (configurable por nivel), dos toques, reembolso `floor(coste × refund_ratio)`.
-- **Construir en combate** ✅ (D-012, pendiente de tu confirmación): permitido por defecto. No se puede construir
-  sobre un enemigo ni dejar a un enemigo vivo sin ruta ("Would trap enemies"). Los enemigos adoptan la nueva ruta al
-  llegar a su siguiente celda.
+- **Construir en combate** ✅ (confirmado, D-012/D-015):
+  - Entre oleadas, coste normal; en combate, **recargo del 25 %** (`combat_build_surcharge`, configurable por nivel),
+    solo en construcciones nuevas, visible en el botón (`125 CR*` + nota) y sobre el fantasma (`125 CR (+25)`).
+    El reembolso al retirar usa el coste base.
+  - No se puede construir sobre enemigos, ni dejar enemigos atrapados, ni bloquear el acceso a la base.
+  - Una construcción rechazada nunca consume créditos (validación y cobro son una sola operación).
+  - Los enemigos adoptan la nueva ruta al llegar a su siguiente celda.
 
 ## 4. Clases de movimiento
 
@@ -47,31 +51,47 @@ Fase de construcción → iniciar oleada → combate (ajustes limitados) → rec
 📐 Pendiente: los tanques destruyen los sacos que cruzan (cambio de topología en combate);
 muros destruibles por unidades específicas (ingenieros, artillería enemiga).
 
-## 6. Torretas 📐 (Hito 3)
+## 6. Torretas ✅ (Hito 3; valores provisionales en `data/turrets/*.tres` + `data/structures/turret_*.tres`)
 
-| Torreta | Coste | Objetivos | Perfil |
+| Torreta | Coste | Vida | Alcance | Cadencia | Daño | Tipo | Área | Objetivos | Prioridad |
+|---|---|---|---|---|---|---|---|---|---|
+| Heavy Machine Gun | 100 | 250 | 3,0 | 8,3/s | 9 | BULLET | — | Tierra | FIRST |
+| Missile Launcher | 180 | 300 | 4,5 | 0,6/s | 120 | EXPLOSIVE | 0,9 (50 %) | Tierra | STRONGEST |
+| Anti-Aircraft Defense | 150 | 250 | 5,0 | 2,9/s | 30 | FLAK | 0,5 (50 %) | **Solo aire** | CLOSEST |
+
+- Huella 1×1; **bloquean a todas las clases**: son parte del laberinto (y tampoco pueden sellar la base).
+- Giran hacia el objetivo (velocidad de giro y tolerancia de puntería en datos) y solo disparan alineadas.
+- Prioridades: FIRST (menor distancia **real por ruta** a la base, del campo de flujo), CLOSEST, STRONGEST.
+  Desempate por id: determinista.
+- El AA no dispara a unidades terrestres (no hay aéreas todavía): queda preparado para el mundo 3.
+- Pendiente: mejoras de torretas, cambio de prioridad en partida, vida de torretas (los enemigos aún no atacan).
+
+### Daño y blindaje
+
+`daño final = daño × multiplicador[tipo][blindaje]`
+
+| Tipo \ Blindaje | NONE (infantería) | LIGHT (vehículo ligero) | HEAVY (tanque) |
 |---|---|---|---|
-| Heavy Machine Gun | 100 | Infantería, ruedas | Cadencia alta, daño bajo, alcance medio |
-| Anti-Aircraft Defense | 150 | Aire (y ligeros, por decidir) | Cadencia y alcance configurables |
-| Missile Launcher | 180 | Blindados | Cadencia lenta, daño alto, proyectil visible, explosión |
+| BULLET | 1,00 | 0,50 | 0,10 |
+| EXPLOSIVE | 0,60 | 1,00 | 1,00 |
+| FLAK | 0,60 | 0,40 | 0,15 |
+| GENERIC | 1,00 | 0,75 | 0,40 |
 
-Parámetros en datos: coste, vida, daño, alcance, cadencia, velocidad de proyectil, objetivos permitidos,
-prioridad (primero / más cercano / más vida / más avanzado), mejoras. Las torretas **también bloquean**
-(huella 1×1 o 2×2 por decidir) y por tanto forman parte del laberinto.
+DPS efectivo aproximado: HMG 75 vs infantería, 37 vs ligero, 7,5 vs tanque; misiles 45 vs infantería (+área),
+75 vs ligero/tanque. Resultado buscado: la HMG barre infantería y no sirve contra tanques; los misiles son la
+respuesta al blindaje.
 
 ## 7. Enemigos ✅ (Hito 2; valores provisionales en `data/enemies/*.tres`)
 
 | Enemigo | Clase | Vida | Velocidad (celdas/s) | Blindaje | Daño a HQ | Recompensa |
 |---|---|---|---|---|---|---|
-| Infantry | INFANTRY | 60 | 1,5 | 0 % | 1 | 5 |
-| Light Vehicle | WHEELED | 140 | 2,4 | 25 % | 2 | 12 |
-| Heavy Tank | TRACKED | 600 | 0,8 | 60 % | 5 | 40 |
+| Infantry | INFANTRY | 60 | 1,5 | NONE | 1 | 5 |
+| Light Vehicle | WHEELED | 140 | 2,4 | LIGHT | 2 | 12 |
+| Heavy Tank | TRACKED | 600 | 0,8 | HEAVY | 5 | 40 |
 
-- Blindaje actual = fracción genérica de daño absorbida. En el Hito 3 se añadirá multiplicador por tipo de daño
-  (balas vs explosivo), que es lo que hará que cada torreta tenga su objetivo natural.
+- Blindaje = clase (NONE/LIGHT/HEAVY) contra el tipo de daño del arma (ver tabla en §6).
 - Todos los enemigos de una clase comparten la misma navegación; la ruta dibujada es exactamente la que siguen.
-- Sin fuente de daño todavía (torretas: Hito 3). `TEST ASSAULT` (HUD) lanza una columna de depuración de 10 unidades
-  (17 de daño al HQ, sobrevivible) para observar el ciclo BUILD → COMBAT → BUILD.
+- `TEST ASSAULT` (HUD, depuración) lanza una columna de 10 unidades (17 de daño al HQ si nadie dispara).
 
 ## 8. Economía
 

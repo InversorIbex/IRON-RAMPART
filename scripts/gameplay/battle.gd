@@ -24,6 +24,7 @@ const PREVIEW_REFRESH := 0.2
 var session: GameSession
 var grid_view: GridView
 var enemy_layer: EnemyLayer
+var combat_layer: CombatLayer
 var camera: BattleCamera
 var hud: BattleHud
 var assault: TestAssault = null
@@ -43,6 +44,8 @@ var _press_pos: Vector2 = Vector2.ZERO
 var _panning: bool = false
 var _mouse_pan: bool = false
 var _preview_timer: float = 0.0
+var _selected_turret: TurretState = null
+var _info_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -58,9 +61,14 @@ func _ready() -> void:
 	enemy_layer = EnemyLayer.new()
 	grid_view.add_child(enemy_layer)
 	enemy_layer.bind(session.enemies, session.grid.cell_size)
+	combat_layer = CombatLayer.new()
+	grid_view.add_child(combat_layer) # after EnemyLayer: drawn on top
+	combat_layer.bind(session.combat, session.enemies, session.grid.cell_size)
 	camera = BattleCamera.new()
 	add_child(camera)
 	camera.make_current()
+	combat_layer.heavy_impact.connect(camera.add_shake)
+	session.combat.turret_removed.connect(_on_turret_removed)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -85,8 +93,14 @@ func _process(delta: float) -> void:
 	session.tick(delta)
 	var t1 := Time.get_ticks_usec()
 	enemy_layer.sync(delta)
+	combat_layer.sync(delta)
 	last_sim_usec = t1 - t0
 	last_view_usec = Time.get_ticks_usec() - t1
+	if _selected_turret != null:
+		_info_timer -= delta
+		if _info_timer <= 0.0:
+			_info_timer = 0.5
+			hud.show_turret_info(_selected_turret)
 	if assault != null and assault.is_finished() and session.enemies.count() == 0 \
 			and session.phase == GameSession.Phase.COMBAT:
 		assault = null
@@ -162,6 +176,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				if _aiming:
 					_commit(cell)
+				elif not _panning and _selected == null and not _remove_mode:
+					_select_turret_at(cell)
 				_aiming = false
 				_panning = false
 			get_viewport().set_input_as_handled()
@@ -242,7 +258,8 @@ func _commit(cell: Vector2i) -> void:
 		var origin := ConstructionService.origin_for_cell(_selected, cell)
 		var check := session.construction.build(_selected, origin)
 		if check.is_ok():
-			hud.show_feedback("%s built  (-%d CR)" % [_selected.display_name, _selected.cost], false)
+			var extra := "" if check.surcharge == 0 else ", incl. +%d combat surcharge" % check.surcharge
+			hud.show_feedback("%s built  (-%d CR%s)" % [_selected.display_name, check.cost, extra], false)
 		else:
 			hud.show_feedback(ConstructionService.reason_text(check), true)
 		grid_view.set_ghost(_evaluate_at(cell))
@@ -277,6 +294,25 @@ func _is_armed(cell: Vector2i) -> bool:
 	return armed != null and armed == session.grid.get_placement_at(cell)
 
 
+## Tap with no tool: inspect a turret (range ring + live stats in the HUD).
+func _select_turret_at(cell: Vector2i) -> void:
+	var placement: Placement = null
+	if session.grid.is_in_bounds(cell):
+		placement = session.grid.get_placement_at(cell)
+	_selected_turret = session.combat.turret_at(placement)
+	grid_view.set_selected_turret(_selected_turret)
+	if _selected_turret != null:
+		_info_timer = 0.0
+	else:
+		hud.clear_selection()
+
+
+func _on_turret_removed(t: TurretState) -> void:
+	if t == _selected_turret:
+		_selected_turret = null
+		grid_view.set_selected_turret(null)
+
+
 func _refresh_preview() -> void:
 	if session.grid.is_in_bounds(_hover_cell):
 		grid_view.set_ghost(_evaluate_at(_hover_cell))
@@ -289,6 +325,9 @@ func _evaluate_at(cell: Vector2i) -> ConstructionService.Check:
 # --- Tools / navigation ------------------------------------------------------
 
 func _on_tool_changed(data: StructureData, remove_mode: bool) -> void:
+	if data != null or remove_mode:
+		_selected_turret = null
+		grid_view.set_selected_turret(null)
 	_selected = data
 	_remove_mode = remove_mode
 	_aiming = false

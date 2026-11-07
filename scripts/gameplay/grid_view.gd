@@ -19,6 +19,8 @@ var _routes: Array = [] # [{ "movement": int, "points": PackedVector2Array }]
 var _ghost: ConstructionService.Check = null
 var _remove_cell: Vector2i = Vector2i(-1, -1)
 var _remove_armed: bool = false
+## Turret whose range is highlighted (tapped with no tool selected).
+var _selected_turret: TurretState = null
 
 
 func bind(p_session: GameSession) -> void:
@@ -36,6 +38,11 @@ func set_ghost(check: ConstructionService.Check) -> void:
 func set_remove_cursor(cell: Vector2i, armed: bool) -> void:
 	_remove_cell = cell
 	_remove_armed = armed
+	queue_redraw()
+
+
+func set_selected_turret(t: TurretState) -> void:
+	_selected_turret = t
 	queue_redraw()
 
 
@@ -76,6 +83,16 @@ func _draw() -> void:
 		_draw_routes()
 	_draw_ghost()
 	_draw_remove_cursor()
+	if _selected_turret != null:
+		if session.combat.get_turrets().has(_selected_turret):
+			_draw_range(_selected_turret.position, _selected_turret.range_px, Palette.TACTICAL_GOLD)
+		else:
+			_selected_turret = null
+
+
+func _draw_range(center: Vector2, radius: float, color: Color) -> void:
+	draw_circle(center, radius, Color(color, 0.08))
+	draw_arc(center, radius, 0.0, TAU, 64, Color(color, 0.85), 2.5)
 
 
 func _draw_terrain() -> void:
@@ -133,6 +150,18 @@ func _draw_structure_shape(data: StructureData, cells: Array[Vector2i], alpha: f
 	var shadow := Color(0, 0, 0, 0.3 * alpha)
 	for cell in cells:
 		var r := grid.cell_rect(cell).grow(-5)
+		if data.category == StructureData.Category.TURRET:
+			# Static emplacement; the rotating weapon is a TurretView node.
+			var c := r.get_center()
+			var oct := PackedVector2Array()
+			for k in 8:
+				oct.append(c + Vector2.from_angle(PI / 8.0 + k * TAU / 8.0) * r.size.x * 0.54)
+			draw_colored_polygon(oct, Color(Palette.SANDSTONE.darkened(0.15), alpha))
+			draw_polyline(oct + PackedVector2Array([oct[0]]), Color(Palette.OLIVE_BLACK, alpha), 2.0)
+			draw_circle(c, r.size.x * 0.32, Color(Palette.MILITARY_GREEN.darkened(0.3), alpha))
+			if alpha < 1.0 and data.turret != null:
+				draw_line(c, c + Vector2(r.size.x * 0.45, 0), Color(Palette.METAL_DARK, alpha), 5.0)
+			continue
 		match data.id:
 			&"sandbags":
 				for i in 3:
@@ -174,6 +203,18 @@ func _draw_ghost() -> void:
 	var ok := _ghost.is_ok()
 	var tint := Palette.VALID if ok else Palette.ALERT_RED
 	var grid := session.grid
+	if _ghost.data.turret != null and not _ghost.cells.is_empty() and grid.is_in_bounds(_ghost.cells[0]):
+		var center := Vector2.ZERO
+		for cell in _ghost.cells:
+			center += grid.cell_to_local(cell)
+		_draw_range(center / _ghost.cells.size(), _ghost.data.turret.range_cells * grid.cell_size, tint)
+	# Price tag (includes combat surcharge): what releasing will charge.
+	if not _ghost.cells.is_empty() and grid.is_in_bounds(_ghost.cells[0]):
+		var tag_pos := grid.cell_rect(_ghost.cells[0]).position + Vector2(0, -8)
+		var tag := "%d CR" % _ghost.cost if _ghost.surcharge == 0 else "%d CR (+%d)" % [_ghost.cost, _ghost.surcharge]
+		draw_string(ThemeDB.fallback_font, tag_pos + Vector2(2, 2), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Palette.OLIVE_BLACK)
+		draw_string(ThemeDB.fallback_font, tag_pos, tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 22,
+				Palette.TACTICAL_GOLD if ok else Palette.ALERT_RED)
 	for cell in _ghost.cells:
 		if not grid.is_in_bounds(cell):
 			continue

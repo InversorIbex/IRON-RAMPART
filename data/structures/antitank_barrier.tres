@@ -6,6 +6,7 @@
 script = ExtResource("1_sdata")
 id = &"antitank_barrier"
 display_name = "Anti-Tank Barrier"
+short_name = "AT BARRIER"
 description = "Steel hedgehogs. Stops wheeled and tracked vehicles. Infantry slips through the gaps."
 category = 0
 cost = 35

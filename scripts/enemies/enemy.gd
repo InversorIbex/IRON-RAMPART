@@ -25,6 +25,8 @@ var heading: Vector2 = Vector2.RIGHT
 ## Seconds alive; cells walked (stats, tests, "most advanced" targeting).
 var age: float = 0.0
 var cells_walked: int = 0
+## Incremented on every damaging hit (views use it for hit flashes).
+var hits_taken: int = 0
 
 
 func _init(p_id: int, p_data: EnemyData, spawn_cell: Vector2i) -> void:
@@ -40,10 +42,12 @@ func is_alive() -> bool:
 	return state == State.MOVING or state == State.BLOCKED
 
 
-## Damage after armor. Returns the damage actually applied.
-func apply_damage(amount: float) -> float:
+## Damage after armour (see Damage). Returns the damage actually applied.
+## Only EnemyRoster.damage() should call this, so death/rewards stay consistent.
+func apply_damage(amount: float, type: int = Damage.Type.GENERIC) -> float:
 	if not is_alive() or amount <= 0.0:
 		return 0.0
-	var dealt := amount * (1.0 - data.armor)
+	var dealt := Damage.compute(amount, type, data.armor_class)
 	hp -= dealt
+	hits_taken += 1
 	return dealt

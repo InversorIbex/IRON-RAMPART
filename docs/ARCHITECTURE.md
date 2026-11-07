@@ -12,26 +12,29 @@ data/
   levels/*.json          Misiones (layout ASCII + parámetros + reglas)  -> LevelLoader
   structures/*.tres      StructureData                                  -> StructureCatalog
   enemies/*.tres         EnemyData                                      -> EnemyCatalog
+  turrets/*.tres         TurretData (arma), referenciada por data/structures/turret_*.tres
 scenes/
   menus/main_menu.tscn   Escena principal (run/main_scene)
   gameplay/battle.tscn   Misión jugable
   enemies/enemy_view.tscn  Vista reutilizable de un enemigo (instanciada por EnemyLayer)
+  turrets/turret_view.tscn Arma giratoria de una torreta (instanciada por CombatLayer)
 scripts/
   core/                  Palette, GameSession (estado de una partida)
   grid/                  Terrain, GridModel, Placement
   navigation/            MovementClass, NavGrid (campos de flujo por clase)
   construction/          StructureData, StructureCatalog, ConstructionService
   enemies/               EnemyData, EnemyCatalog, Enemy, EnemyRoster, EnemyView
+  combat/                Damage, Targeting, TurretData, TurretState, Projectile, CombatSystem, TurretView
   economy/               Wallet
   levels/                LevelData, LevelLoader
-  gameplay/              Battle, GridView, EnemyLayer, BattleCamera, TestAssault (debug)
+  gameplay/              Battle, GridView, EnemyLayer, CombatLayer, BattleCamera, TestAssault (debug)
   ui/                    UiTheme, BattleHud
   menus/                 MainMenu
 tests/
   run_tests.gd           Runner headless (admite pruebas con await)
   unit/                  Suites unitarias + smoke de escenas
-  visual/                Recorridos E2E con render y capturas (drive_battle, drive_enemies)
-  perf/                  bench_enemies.gd (lógica headless o escena con render)
+  visual/                Recorridos E2E con render y capturas (drive_battle, drive_enemies, drive_combat)
+  perf/                  bench_enemies.gd, bench_combat.gd (lógica headless o escena con render)
 docs/                    Documentación (.gdignore: Godot no la importa)
 ```
 
@@ -44,20 +47,24 @@ GameSession ──posee──> GridModel ──señales placement_added/removed�
      │                                                                   │ topology_changed
      ├──posee──> Wallet                                                  ▼
      ├──posee──> EnemyRoster ──lee next_step()──────────────────────── NavGrid
-     │               ▲ occupied_cells / route_requirements
-     └──posee──> ConstructionService ──valida con──> NavGrid.find_broken_routes
-                                     ──consulta──> EnemyRoster (opcional)
+     │               ▲ occupied_cells / route_requirements   ▲ damage() (única puerta de daño)
+     ├──posee──> ConstructionService ──valida con──> NavGrid.find_broken_routes
+     │                               ──consulta──> EnemyRoster (opcional); price_of() (recargo)
+     └──posee──> CombatSystem ──escucha placement_added/removed──> GridModel
+                              ──Targeting.select (NavGrid.distance)──> EnemyRoster.damage()
 
 Battle (Node2D) ──posee──> GameSession, TestAssault (debug)
    ├── GridView (Node2D)  ─ terreno, estructuras, rutas (de NavGrid), fantasma
-   │     └── EnemyLayer (Node2D) ─ crea/libera EnemyView según señales de EnemyRoster
+   │     ├── EnemyLayer (Node2D) ─ crea/libera EnemyView según señales de EnemyRoster
+   │     └── CombatLayer (Node2D) ─ TurretView por torreta + proyectiles/efectos en un _draw
    ├── BattleCamera (Camera2D) ─ zoom/pan
    └── CanvasLayer/BattleHud (Control) ─ intenciones: tool_changed, assault_requested, restart, menu
 ```
 
-**Sin dependencias circulares** (auditado en el Hito 2): `GridModel` no conoce a nadie; `NavGrid` → `GridModel`;
+**Sin dependencias circulares** (auditado en los Hitos 2 y 3): `GridModel` no conoce a nadie; `NavGrid` → `GridModel`;
 `EnemyRoster` → `GridModel`, `NavGrid`; `ConstructionService` → `GridModel`, `NavGrid`, `Wallet`, `EnemyRoster`;
-`GameSession` → todos. Ningún servicio conoce nodos.
+`CombatSystem` → `GridModel`, `EnemyRoster`, `NavGrid`; `GameSession` → todos. Ningún servicio conoce nodos;
+construcción no conoce combate y combate no conoce construcción.
 
 **Una sola fuente de verdad:** `GridModel` es la única verdad de bloqueo; `NavGrid` se sincroniza solo
 escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la auditoría).
@@ -81,6 +88,12 @@ escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la
 | `BattleCamera` | Camera2D | Zoom 1×–3× en torno a un punto, pan con límites |
 | `BattleHud` | Control | Estado, panel de construcción, feedback, pausa, derrota, safe areas |
 | `TestAssault` | RefCounted | **Andamiaje de depuración** del Hito 2 (columna fija de 10 enemigos). Lo sustituye `WaveManager` en el Hito 4 |
+| `Damage` | estático | Tabla tipo de daño × clase de blindaje (D-016) |
+| `Targeting` | estático | Capas GROUND/AIR, prioridades FIRST/CLOSEST/STRONGEST, `select()` determinista O(enemigos) |
+| `TurretData` | Resource | Arma: daño, tipo, cadencia, alcance, proyectil, velocidad, área, capas, prioridad, giro, tolerancia, silueta |
+| `TurretState` / `Projectile` | RefCounted | Estado de una torreta (puntería, enfriamiento, objetivo, estadísticas) y de un proyectil |
+| `CombatSystem` | RefCounted | Sigue torretas vía señales del grid; `update(delta)`: objetivo, giro, disparo, proyectiles, impactos, área |
+| `CombatLayer` / `TurretView` | Node2D | Efectos (trazadoras, misiles con humo, chispas, explosiones, restos, quemaduras) y armas; señal `heavy_impact` → sacudida de cámara |
 
 ## Navegación (D-011)
 
@@ -108,12 +121,31 @@ escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la
 - **Muerte:** `EnemyRoster.damage()` aplica `amount × (1 − armor)`; a hp ≤ 0 → `DEAD`, recompensa al `Wallet`, vista con
   animación de salida. (Aún no hay fuente de daño en juego: llega con las torretas en el Hito 3.)
 
+## Combate (Hito 3)
+
+Orden por tick (`GameSession.tick`): `EnemyRoster.update` → si la partida sigue, `CombatSystem.update`.
+
+1. **Torretas** (`_update_turret`): enfriamiento; descartar objetivo muerto/fuera de alcance/incompatible; buscar
+   objetivo si no hay o si está lista para disparar (como máximo cada 0,1 s, D-017); girar a `turn_speed`; disparar si
+   está lista y alineada dentro de `aim_tolerance`; `cooldown += fire_interval` (cadencia exacta, sin acumular ráfagas
+   en reposo).
+2. **Proyectiles** (`_update_projectiles`): guiados mientras el objetivo vive; al llegar → `_impact` una sola vez.
+   Bala sin objetivo = fallo (sin daño). Misil/flak = explosión en el punto (daño de área con caída).
+3. **Daño** siempre por `EnemyRoster.damage(enemy, amount, type)` → blindaje → muerte → `enemy_killed` →
+   recompensa en `GameSession`. Estadísticas por torreta: disparos, bajas, daño.
+4. **Fin de partida:** en derrota se vacían los proyectiles y el combate deja de actualizarse (ni un disparo más).
+
+Visualización: `TurretView` (arma, retroceso, fogonazo) y `CombatLayer` (proyectiles y hasta 400 efectos, un `_draw`
+por frame mientras hay actividad). `GridView` dibuja la base estática de la torreta, el anillo de alcance (fantasma y
+torreta seleccionada) y el precio sobre el fantasma.
+
 ## Flujo de construcción
 
 1. HUD emite `tool_changed` → `Battle` guarda la herramienta.
 2. Puntero sobre el mapa → `ConstructionService.evaluate` → `GridView.set_ghost` (verde/rojo, celdas afectadas marcadas).
    Con enemigos en movimiento la previsualización se revalida cada 0,2 s.
-3. Soltar → `build`: límites → terreno → ocupación → enemigos encima → créditos → rutas (spawns + enemigos).
+3. Soltar → `build`: límites → terreno → ocupación → enemigos encima → créditos (precio con recargo si es combate) →
+   rutas (spawns + enemigos). El precio cobrado es el `cost` del mismo `Check` que se mostró.
 4. Si es válido: `Wallet.spend` → `GridModel.add_placement` → (señal) `NavGrid` recalcula → `topology_changed` →
    `GridView` redibuja rutas; los enemigos usan el nuevo campo en su próxima celda.
 
@@ -135,9 +167,12 @@ Con `emulate_mouse_from_touch`, el dedo 0 también genera eventos de ratón: mie
 | `GridModel` | `placement_added/removed` | `NavGrid` (sincronización) |
 | `NavGrid` | `topology_changed(version)` | `GridView` (rutas), `EnemyRoster` (reintento de bloqueados) |
 | `EnemyRoster` | `enemy_spawned` | `EnemyLayer` |
-| `EnemyRoster` | `enemy_killed` | `GameSession` (recompensa), `EnemyLayer` |
+| `EnemyRoster` | `enemy_killed` | `GameSession` (recompensa), `EnemyLayer`, `CombatLayer` (restos) |
 | `EnemyRoster` | `enemy_reached_base` | `GameSession` (daño HQ), `EnemyLayer` |
 | `ConstructionService` | `structure_built/removed` | futuro: efectos, audio |
+| `GridModel` | `placement_added/removed` | `CombatSystem` (alta/baja de torretas) |
+| `CombatSystem` | `turret_added/removed`, `shot_fired`, `projectile_impact`, `explosion` | `CombatLayer`, `Battle` |
+| `CombatLayer` | `heavy_impact` | `BattleCamera.add_shake` |
 | `Wallet` | `credits_changed` | `BattleHud` |
 | `GameSession` | `phase_changed`, `base_hp_changed` | `BattleHud` |
 | `BattleHud` | `tool_changed`, `assault_requested`, `restart_requested`, `menu_requested` | `Battle` |
@@ -149,6 +184,9 @@ Rendimiento de señales: ninguna se emite por enemigo y fotograma; solo en event
 - **Nuevo enemigo terrestre:** `data/enemies/<id>.tres` (`EnemyData`) + una línea en `EnemyCatalog.PATHS`. Si su silueta
   existe, no hace falta código. Si es de una clase de movimiento nueva, ver abajo.
 - **Nueva estructura:** `data/structures/<id>.tres` + una línea en `StructureCatalog.PATHS` + id en `available_structures`.
+- **Nueva torreta:** `data/turrets/<id>.tres` (`TurretData`) + `data/structures/turret_<id>.tres` (category TURRET,
+  `turret = ExtResource`) + registro en el catálogo. Si su silueta existe, no hace falta código.
+- **Nuevo tipo de daño / blindaje:** fila/columna en `Damage.MULTIPLIER` y su enum.
 - **Nuevo nivel:** `data/levels/*.json`; el loader valida conectividad.
 - **Nueva clase de movimiento:** bit en `MovementClass` (y en `ALL`), flag en `StructureData.blocks_mask`, opción en
   `EnemyData.movement`, estilo en `GridView.ROUTE_STYLE` y `BattleHud.LEGEND_SHORT`. `NavGrid` crea su campo automáticamente.

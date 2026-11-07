@@ -7,6 +7,7 @@ extends Node2D
 
 const TURN_SPEED := 10.0 # radians/s cap for heading smoothing
 const EXIT_TIME := 0.3
+const HIT_FLASH_TIME := 0.08
 
 var enemy: Enemy
 var _cell: float = 64.0
@@ -15,6 +16,8 @@ var _last_hp: float = -1.0
 var _last_state: int = -1
 var _bob_phase: float = 0.0
 var _exiting: bool = false
+var _last_hits: int = 0
+var _hit_flash: float = 0.0
 
 
 func setup(p_enemy: Enemy, cell_size: float) -> void:
@@ -38,6 +41,12 @@ func sync(delta: float) -> void:
 	if enemy.data.silhouette == EnemyData.Silhouette.SOLDIER and enemy.state == Enemy.State.MOVING:
 		_bob_phase += delta * 14.0
 		scale = Vector2.ONE * (1.0 + 0.06 * sin(_bob_phase))
+	if enemy.hits_taken != _last_hits:
+		_last_hits = enemy.hits_taken
+		_hit_flash = HIT_FLASH_TIME
+	if _hit_flash > 0.0:
+		_hit_flash = maxf(0.0, _hit_flash - delta)
+		queue_redraw()
 	if enemy.hp != _last_hp or enemy.state != _last_state:
 		_last_hp = enemy.hp
 		_last_state = enemy.state
@@ -60,45 +69,55 @@ func _draw() -> void:
 		return
 	var d := enemy.data
 	var size := d.visual_size * _cell
-	var body := d.placeholder_color
-	var dark := body.darkened(0.45)
-	var shadow := Color(0, 0, 0, 0.3)
 	var half := size * 0.5
+	var hull := Palette.ENEMY_HULL.lerp(d.placeholder_color, 0.25)
+	var line := Palette.ENEMY_OUTLINE
+	var mark := Palette.ALERT_RED
 	match d.silhouette:
 		EnemyData.Silhouette.SOLDIER:
 			var r := half.x
-			draw_circle(Vector2(2, 3), r, shadow)
-			draw_circle(Vector2.ZERO, r, body)
-			draw_circle(Vector2.ZERO, r * 0.55, dark) # helmet
-			draw_line(Vector2(0, r * 0.5), Vector2(r * 1.5, r * 0.5), dark, 3.0) # rifle
+			draw_circle(Vector2(2, 3), r, Palette.SHADOW)
+			draw_circle(Vector2.ZERO, r + 2.0, line)
+			draw_circle(Vector2.ZERO, r, hull)
+			draw_line(Vector2(0, r * 0.45), Vector2(r * 1.7, r * 0.45), line, 3.0) # rifle
+			draw_circle(Vector2.ZERO, r * 0.5, mark) # helmet band
 		EnemyData.Silhouette.WHEELED_VEHICLE:
 			var rect := Rect2(-half, size)
-			draw_rect(Rect2(rect.position + Vector2(3, 4), rect.size), shadow)
-			for wx in [-0.32, 0.32]:
+			draw_rect(Rect2(rect.position + Vector2(3, 4), rect.size), Palette.SHADOW)
+			for wx in [-0.3, 0.3]:
 				for wy in [-1.0, 1.0]:
-					draw_rect(Rect2(Vector2(wx * size.x - 6, wy * half.y - 4), Vector2(12, 8)), Color(0.12, 0.12, 0.1))
-			draw_rect(rect, body)
-			draw_rect(Rect2(Vector2(half.x * 0.25, -half.y * 0.7), Vector2(half.x * 0.6, size.y * 0.7)), dark) # cab
+					draw_rect(Rect2(Vector2(wx * size.x - 7, wy * half.y - 5), Vector2(14, 10)), Palette.TRACK)
+			draw_rect(rect.grow(2.0), line)
+			draw_rect(rect, hull)
+			draw_rect(Rect2(Vector2(half.x * 0.2, -half.y * 0.65), Vector2(half.x * 0.6, size.y * 0.65)), Palette.METAL) # cab
+			_draw_chevron(Vector2(-half.x * 0.35, 0), half.y * 0.5, mark)
 		EnemyData.Silhouette.TRACKED_VEHICLE:
 			var rect := Rect2(-half, size)
-			draw_rect(Rect2(rect.position + Vector2(3, 5), rect.size), shadow)
-			draw_rect(Rect2(Vector2(-half.x, -half.y), Vector2(size.x, size.y * 0.22)), Color(0.12, 0.12, 0.1))
-			draw_rect(Rect2(Vector2(-half.x, half.y * 0.56), Vector2(size.x, size.y * 0.22)), Color(0.12, 0.12, 0.1))
-			draw_rect(Rect2(Vector2(-half.x * 0.9, -half.y * 0.6), Vector2(size.x * 0.9, size.y * 0.6)), body)
-			draw_circle(Vector2(-half.x * 0.05, 0), half.y * 0.5, dark) # turret
-			draw_line(Vector2(0, 0), Vector2(half.x * 1.25, 0), dark, 5.0) # barrel
-	# Enemy marker so units never blend with friendly structures.
-	draw_arc(Vector2.ZERO, maxf(half.x, half.y) + 3.0, 0.0, TAU, 20, Color(Palette.ALERT_RED, 0.8), 2.0)
+			draw_rect(Rect2(rect.position + Vector2(3, 5), rect.size), Palette.SHADOW)
+			draw_rect(rect.grow(2.0), line)
+			draw_rect(Rect2(Vector2(-half.x, -half.y), Vector2(size.x, size.y * 0.24)), Palette.TRACK)
+			draw_rect(Rect2(Vector2(-half.x, half.y * 0.52), Vector2(size.x, size.y * 0.24)), Palette.TRACK)
+			draw_rect(Rect2(Vector2(-half.x * 0.92, -half.y * 0.55), Vector2(size.x * 0.92, size.y * 0.55)), hull)
+			draw_line(Vector2(0, 0), Vector2(half.x * 1.35, 0), line, 7.0) # barrel outline
+			draw_line(Vector2(0, 0), Vector2(half.x * 1.3, 0), Palette.METAL_DARK, 4.0)
+			draw_circle(Vector2(-half.x * 0.05, 0), half.y * 0.5, Palette.METAL)
+			_draw_chevron(Vector2(-half.x * 0.55, 0), half.y * 0.35, mark)
+	# Hit flash: brief light overlay when the unit takes damage.
+	if _hit_flash > 0.0:
+		draw_circle(Vector2.ZERO, maxf(half.x, half.y) * 0.9, Color(Palette.FX_FLASH, 0.55 * _hit_flash / HIT_FLASH_TIME))
+	# HP bar and blocked marker stay horizontal: counter-rotate.
+	draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
+	var top_y := -maxf(half.x, half.y) - 14.0
 	if enemy.hp < d.max_hp:
-		var w := maxf(size.x, 24.0)
+		var w := maxf(size.x, 30.0)
 		var frac := clampf(enemy.hp / d.max_hp, 0.0, 1.0)
-		var top := Vector2(-w * 0.5, -maxf(half.x, half.y) - 12.0)
-		# HP bar is drawn in local space; counter-rotate so it stays horizontal.
-		draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
-		draw_rect(Rect2(top, Vector2(w, 5)), Color(0, 0, 0, 0.6))
-		draw_rect(Rect2(top, Vector2(w * frac, 5)), Palette.ALERT_RED if frac < 0.35 else Palette.TACTICAL_GOLD)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var top := Vector2(-w * 0.5, top_y)
+		draw_rect(Rect2(top - Vector2(1, 1), Vector2(w + 2, 8)), Palette.OLIVE_BLACK)
+		draw_rect(Rect2(top, Vector2(w * frac, 6)), Palette.ALERT_RED if frac < 0.35 else Palette.TACTICAL_GOLD)
 	if enemy.state == Enemy.State.BLOCKED:
-		draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
-		draw_string(ThemeDB.fallback_font, Vector2(-6, -half.y - 16), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Palette.ALERT_RED)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_string(ThemeDB.fallback_font, Vector2(-6, top_y - 4), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Palette.ALERT_RED)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_chevron(at: Vector2, size: float, color: Color) -> void:
+	draw_polyline(PackedVector2Array([at + Vector2(-size, -size), at + Vector2(0, 0), at + Vector2(-size, size)]), color, 3.0)

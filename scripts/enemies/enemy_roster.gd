@@ -48,9 +48,10 @@ func spawn(data: EnemyData, spawn_cell: Vector2i) -> Enemy:
 	return enemy
 
 
-## Applies damage (after armor). Kills and removes the enemy at hp <= 0.
-func damage(enemy: Enemy, amount: float) -> float:
-	var dealt := enemy.apply_damage(amount)
+## The single damage entry point: applies armour (Damage table), kills and
+## removes the enemy at hp <= 0 and emits enemy_killed exactly once.
+func damage(enemy: Enemy, amount: float, type: int = Damage.Type.GENERIC) -> float:
+	var dealt := enemy.apply_damage(amount, type)
 	if enemy.is_alive() and enemy.hp <= 0.0:
 		enemy.state = Enemy.State.DEAD
 		_remove(enemy)

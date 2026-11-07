@@ -62,7 +62,7 @@ func _main() -> void:
 	await _shot("03_rejected_seal_sandbags")
 
 	# Concrete wall elsewhere forces a detour: route must change.
-	_click(_find_button(hud, "CONCRETE WALL").get_global_rect().get_center())
+	_click(_find_button(hud, "WALL").get_global_rect().get_center())
 	await _frames(2)
 	var path_before := session.nav.path_to_goal(MovementClass.INFANTRY, Vector2i(0, 8))
 	for c in [Vector2i(14, 4), Vector2i(14, 5), Vector2i(14, 6), Vector2i(14, 7), Vector2i(14, 8)]:
@@ -73,7 +73,7 @@ func _main() -> void:
 	_check(path_after != path_before, "route changed after walls")
 
 	# Anti-tank barrier: infantry route may cross it.
-	_click(_find_button(hud, "ANTI-TANK BARRIER").get_global_rect().get_center())
+	_click(_find_button(hud, "AT BARRIER").get_global_rect().get_center())
 	await _frames(2)
 	_tap_cell(Vector2i(18, 8))
 	await _frames(2)

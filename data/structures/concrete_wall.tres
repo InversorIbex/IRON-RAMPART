@@ -6,6 +6,7 @@
 script = ExtResource("1_sdata")
 id = &"concrete_wall"
 display_name = "Concrete Wall"
+short_name = "WALL"
 description = "Reinforced barrier. Stops every ground unit. The backbone of any maze."
 category = 0
 cost = 25

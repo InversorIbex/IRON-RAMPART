@@ -12,6 +12,7 @@ signal assault_requested
 
 const PANEL_WIDTH := 400.0
 const TOP_BAR_HEIGHT := 76.0
+const BUILD_BUTTON_HEIGHT := 92.0
 ## Reference logical height (project viewport). The side panel must fit in it.
 const REFERENCE_HEIGHT := 1080.0
 const LEGEND_SHORT := {
@@ -30,7 +31,10 @@ var _defeat_overlay: Control
 var _info_label: Label
 var _feedback_label: Label
 var _build_buttons: Array[Button] = []
+## Parallel to _build_buttons (buttons are grouped, so order differs from _structures).
+var _button_data: Array[StructureData] = []
 var _structures: Array[StructureData] = []
+var _surcharge_label: Label
 var _remove_button: Button
 var _button_group := ButtonGroup.new()
 var _pause_overlay: Control
@@ -120,40 +124,53 @@ func _build_side_panel() -> void:
 	add_child(_side_panel)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 8)
 	_side_panel.add_child(col)
-	col.add_child(UiTheme.label("BUILD", UiTheme.FONT_SIZE_SMALL, Palette.MILITARY_GREEN.lightened(0.3)))
-
-	for data in _structures:
-		var b := Button.new()
-		b.toggle_mode = true
-		b.button_group = _button_group
-		b.text = "%s\n%d CR" % [data.display_name.to_upper(), data.cost]
-		b.custom_minimum_size = Vector2(0, UiTheme.TOUCH_MIN_HEIGHT)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.toggled.connect(_on_build_toggled.bind(data))
-		col.add_child(b)
-		_build_buttons.append(b)
+	# Two-column build grid, grouped by category, so 6+ items fit 1080p.
+	for category in [StructureData.Category.BARRIER, StructureData.Category.TURRET]:
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 8)
+		grid.add_theme_constant_override("v_separation", 8)
+		for data in _structures:
+			if data.category != category:
+				continue
+			var b := Button.new()
+			b.toggle_mode = true
+			b.button_group = _button_group
+			b.custom_minimum_size = Vector2(0, BUILD_BUTTON_HEIGHT)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.clip_text = true
+			b.add_theme_font_size_override("font_size", 24)
+			b.toggled.connect(_on_build_toggled.bind(data))
+			grid.add_child(b)
+			_build_buttons.append(b)
+			_button_data.append(data)
+		if grid.get_child_count() > 0:
+			var header := "BARRIERS" if category == StructureData.Category.BARRIER else "TURRETS"
+			col.add_child(UiTheme.label(header, 18, Palette.MILITARY_GREEN.lightened(0.3)))
+			col.add_child(grid)
+	_surcharge_label = UiTheme.label("", 18, Palette.TACTICAL_GOLD)
+	col.add_child(_surcharge_label)
 
 	_remove_button = Button.new()
 	_remove_button.toggle_mode = true
 	_remove_button.button_group = _button_group
 	_remove_button.text = "REMOVE"
-	_remove_button.custom_minimum_size = Vector2(0, UiTheme.TOUCH_MIN_HEIGHT * 0.8)
+	_remove_button.custom_minimum_size = Vector2(0, 72)
 	_remove_button.toggled.connect(_on_remove_toggled)
 	col.add_child(_remove_button)
 
-	_info_label = UiTheme.label("", UiTheme.FONT_SIZE_SMALL)
+	_info_label = UiTheme.label("", 20)
 	_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_info_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(_info_label)
 
-	_feedback_label = UiTheme.label("", UiTheme.FONT_SIZE_SMALL, Palette.TACTICAL_GOLD)
+	_feedback_label = UiTheme.label("", 20, Palette.TACTICAL_GOLD)
 	_feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_feedback_label.custom_minimum_size.y = 90
+	_feedback_label.custom_minimum_size.y = 56
 	col.add_child(_feedback_label)
 
-	col.add_child(UiTheme.label("ENEMY ROUTES", 18, Palette.MILITARY_GREEN.lightened(0.3)))
 	var legend_row := HBoxContainer.new()
 	legend_row.add_theme_constant_override("separation", 7)
 	for bit in MovementClass.ALL:
@@ -210,6 +227,7 @@ func set_enemy_status(alive: int, queued: int) -> void:
 
 func _on_phase_changed(phase: int) -> void:
 	_refresh_status()
+	_refresh_affordability()
 	_assault_button.disabled = phase != GameSession.Phase.BUILD
 	if phase == GameSession.Phase.DEFEAT:
 		_defeat_overlay.visible = true
@@ -246,18 +264,42 @@ func _on_remove_toggled(pressed: bool) -> void:
 
 func _show_info(data: StructureData, remove_mode: bool) -> void:
 	if remove_mode:
-		_info_label.text = "REMOVE MODE\nTap a structure to select it, tap it again to confirm. The refund is shown before confirming."
+		_info_label.text = ("REMOVE MODE\nTap a structure to select it, tap it again to confirm. "
+				+ "The refund is shown before confirming.")
 	elif data == null:
 		_info_label.text = ("Select a structure, then tap or drag on the map and release to build.\n"
-				+ "Enemies always need an open route to the HQ.")
+				+ "Tap a placed turret to inspect it.")
 	else:
-		var blocks := MovementClass.mask_to_names(data.blocks_mask)
-		var passes := MovementClass.mask_to_names(MovementClass.ALL_GROUND & ~data.blocks_mask)
-		_info_label.text = "%s  -  %d CR  -  %d HP\n%s\nBLOCKS: %s\nPASSABLE: %s" % [
-			data.display_name.to_upper(), data.cost, data.max_hp, data.description,
-			", ".join(blocks).to_upper() if not blocks.is_empty() else "NONE",
-			", ".join(passes).to_upper() if not passes.is_empty() else "NONE"]
+		var price := _session.construction.price_of(data)
+		var price_text := "%d CR" % price if price == data.cost else "%d CR (%d +%d combat)" % [price, data.cost, price - data.cost]
+		var text := "%s  -  %s  -  %d HP\n%s\n" % [data.display_name.to_upper(), price_text, data.max_hp, data.description]
+		if data.turret != null:
+			text += _weapon_text(data.turret)
+		else:
+			var passes := MovementClass.mask_to_names(MovementClass.ALL_GROUND & ~data.blocks_mask)
+			text += "PASSABLE FOR: %s" % (", ".join(passes).to_upper() if not passes.is_empty() else "NONE")
+		_info_label.text = text
 	_feedback_label.text = ""
+
+
+## Info for a turret already on the field (tap with no tool selected).
+func show_turret_info(t: TurretState) -> void:
+	_info_label.text = "%s  -  %d HP\n%s\nKILLS %d  -  SHOTS %d  -  DAMAGE %d" % [
+		t.placement.data.display_name.to_upper(), t.placement.hp, _weapon_text(t.data),
+		t.kills, t.shots_fired, roundi(t.damage_dealt)]
+	_feedback_label.text = ""
+
+
+func _weapon_text(w: TurretData) -> String:
+	var layers := PackedStringArray()
+	if w.target_layers & Targeting.GROUND:
+		layers.append("GROUND")
+	if w.target_layers & Targeting.AIR:
+		layers.append("AIR")
+	var splash := "  SPLASH %.1f" % w.splash_radius_cells if w.splash_radius_cells > 0.0 else ""
+	return "RANGE %.1f  -  %.1f SHOTS/S  -  DMG %d %s%s\nTARGETS %s  -  PRIORITY %s" % [
+		w.range_cells, w.shots_per_second(), roundi(w.damage), Damage.type_name(w.damage_type), splash,
+		"/".join(layers), Targeting.Priority.keys()[w.priority]]
 
 
 func _on_credits_changed(_credits: int, _delta: int) -> void:
@@ -277,11 +319,20 @@ func _refresh_status() -> void:
 			_phase_label.text = "%s PHASE" % GameSession.Phase.keys()[_session.phase]
 
 
+## Button labels show the price right now (with combat surcharge) and dim
+## what the player cannot afford. Called on credit and phase changes.
 func _refresh_affordability() -> void:
 	var credits := _session.wallet.get_credits()
+	var service := _session.construction
+	var surcharged := false
 	for i in _build_buttons.size():
-		var affordable := _structures[i].cost <= credits
-		_build_buttons[i].modulate = Color.WHITE if affordable else Color(1, 0.55, 0.5, 0.8)
+		var data := _button_data[i]
+		var price := service.price_of(data)
+		surcharged = surcharged or price > data.cost
+		var b := _build_buttons[i]
+		b.text = "%s\n%d CR%s" % [data.label().to_upper(), price, "*" if price > data.cost else ""]
+		b.modulate = Color.WHITE if price <= credits else Color(1, 0.55, 0.5, 0.8)
+	_surcharge_label.text = ("* COMBAT SURCHARGE +%d%%" % roundi(service.surcharge_ratio * 100.0)) if surcharged else ""
 
 
 func _apply_safe_area() -> void:

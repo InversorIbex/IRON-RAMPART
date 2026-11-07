@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="StructureData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/construction/structure_data.gd" id="1_sdata"]
+[ext_resource type="Resource" path="res://data/turrets/hmg.tres" id="2_weapon"]
+
+[resource]
+script = ExtResource("1_sdata")
+id = &"turret_hmg"
+display_name = "Heavy Machine Gun"
+short_name = "HMG"
+description = "Twin heavy machine gun. High rate of fire, tracer rounds. Shreds infantry; weak against armour."
+category = 1
+cost = 100
+max_hp = 250
+footprint = Vector2i(1, 1)
+blocks_mask = 7
+refund_ratio = 0.75
+placeholder_color = Color(0.30, 0.34, 0.27, 1)
+turret = ExtResource("2_weapon")

@@ -122,15 +122,14 @@ El renderizador elegido (GL Compatibility, D-002) usa OpenGL ES 3.0, disponible 
   pasa a `path_to_goal(bit, from)` (todas las rutas del juego van a la meta); `NavGrid` recibe la meta en su constructor.
 - **Revisar si:** hay mapas mucho mayores (p. ej. > 100×100) o varias metas: entonces BFS incremental o en C++/GDExtension.
 
-## D-012 — Construir durante el combate: permitido por defecto (configurable)
+## D-012 — Construir durante el combate: permitido por defecto (configurable) — **confirmada por el usuario (Hito 3), ver D-015**
 
 - **Contexto:** el Hito 2 exige que los enemigos reaccionen a cambios del laberinto. Con construcción solo en fase
   BUILD (decisión previa) y enemigos solo en COMBAT, esa reacción no podría ocurrir nunca en partida.
 - **Decisión:** regla de nivel `allow_build_during_combat` (por defecto `true`; misión 1 `true`). Validación adicional:
   no construir bajo enemigos (`OCCUPIED_BY_UNIT`) ni dejar a ningún enemigo vivo sin ruta ("Would trap enemies…").
   Retirar en combate sigue desactivado (`allow_remove_during_combat: false`).
-- **Requiere tu confirmación:** es un cambio de regla de diseño (estaba en "preguntas abiertas"). Se revierte con una
-  línea en el JSON del nivel.
+- **Confirmada** al inicio del Hito 3 con recargo de combate (D-015).
 
 ## D-013 — Enemigos: modelo puro + vista por escena, sin físicas
 
@@ -152,4 +151,44 @@ El renderizador elegido (GL Compatibility, D-002) usa OpenGL ES 3.0, disponible 
   rueda y botón central en escritorio; un segundo dedo **cancela** la construcción en curso. A zoom 2,2 la celda mide
   135 px lógicos (≈ 8,6 mm en el móvil de referencia); máximo 3× ≈ 11,7 mm.
 - **Pendiente de validar en dispositivo (Hito 5):** (d) y (e) como opciones de accesibilidad, y doble toque = zoom rápido.
+
+## D-015 — Recargo de construcción en combate (confirmado por el usuario)
+
+- Entre oleadas: coste normal. Durante el combate: `ceil(coste × (1 + combat_build_surcharge))`, regla de nivel,
+  por defecto **0,25**, validada en `[0, 5]`. Solo afecta a construcciones nuevas; el reembolso se calcula siempre
+  sobre el coste base (el recargo no se recupera).
+- **Una sola fuente de precio:** `ConstructionService.price_of()`. La usan el HUD (precio con `*` + nota
+  "COMBAT SURCHARGE +25%"), la etiqueta del fantasma ("125 CR (+25)") y `build()`; el `Check` de `evaluate` lleva
+  `cost` y `surcharge`, y `build` cobra exactamente ese `cost`. `Placement.paid` registra lo pagado.
+- **Atomicidad:** validación y cobro en la misma llamada con el mismo precio; cualquier rechazo (créditos, enemigos
+  encima, encerrar enemigos, sellar la base, fase) retorna antes de tocar créditos, grid o navegación.
+- **Confirmación de colocación:** previsualización verde/roja con precio y alcance → soltar confirma; soltar fuera
+  del mapa o poner un segundo dedo cancela.
+
+## D-016 — Modelo de combate: tipos de daño × clases de blindaje
+
+- Daño final = `amount × MULTIPLIER[tipo][clase de blindaje]` (`scripts/combat/damage.gd`). Sustituye la fracción
+  escalar `armor` del Hito 2 por `armor_class` (NONE/LIGHT/HEAVY). `GENERIC` reproduce los valores anteriores
+  (1,0 / 0,75 / 0,40), así que no cambió ningún comportamiento previo.
+- **Una sola puerta de daño:** `EnemyRoster.damage(enemy, amount, type)` aplica blindaje, mata, emite `enemy_killed`
+  una vez y `GameSession` paga la recompensa. Las torretas no tocan vida ni créditos directamente.
+- **Proyectiles deterministas, sin físicas:** guiados hacia el objetivo vivo (siempre conectan). Si el objetivo muere
+  o llega a la base antes: las balas se pierden sin daño; misiles/flak detonan en la última posición (daño de área).
+  `done` + eliminación tras el impacto ⇒ un proyectil no puede dañar dos veces.
+- **Área:** objetivo directo 100 %, resto en el radio `splash_falloff` (50 %); víctimas recogidas antes de aplicar
+  daño (las muertes modifican la lista del roster).
+- **Torretas = estructuras:** `StructureData.turret → TurretData`. Bloquean como un muro (forman parte del laberinto)
+  y reutilizan construcción, validación de rutas y navegación sin cambios. `CombatSystem` las descubre escuchando a
+  `GridModel` (mismo patrón que `NavGrid`).
+- **Capas de objetivo:** `Targeting.GROUND`/`AIR` en enemigos y armas; el AA está configurado solo para `AIR`.
+- Tabla en código (no en datos) por ahora: es pequeña, central y está cubierta por pruebas; pasará a recurso si el
+  equilibrado del Hito 6 lo pide.
+
+## D-017 — Búsqueda de objetivos limitada a 10 Hz por torreta
+
+- **Medido:** con 100 enemigos y 20 torretas el combate costaba 0,65–0,73 ms/tick, porque las torretas sin objetivo
+  (p. ej. AA sin aviones) o alineándose reescaneaban todos los enemigos en cada frame (O(torretas × enemigos)).
+- **Decisión:** escaneo como máximo cada 0,1 s por torreta (tiempo de reacción), con fases escalonadas por id para
+  repartir picos. El seguimiento y el disparo al objetivo actual siguen siendo por frame.
+- **Resultado medido:** 0,13 ms/tick (−80 %), pico 2,8 → 0,46 ms, mismas bajas en 10 s (92). Determinista.
 

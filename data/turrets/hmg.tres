@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="TurretData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/turret_data.gd" id="1_tdata"]
+
+[resource]
+script = ExtResource("1_tdata")
+id = &"hmg"
+damage = 9.0
+damage_type = 1
+fire_interval = 0.12
+range_cells = 3.0
+projectile = 0
+projectile_speed = 22.0
+splash_radius_cells = 0.0
+splash_falloff = 0.5
+target_layers = 1
+priority = 0
+turn_speed_deg = 540
+aim_tolerance_deg = 8
+silhouette = 0

@@ -33,6 +33,12 @@ IR_SHOTS_DIR=/tmp/shots xvfb-run -a -s "-screen 0 1920x1080x24" \
 Recorrido del Hito 2 (asalto, construir en combate, pellizco real, toque con zoom, derrota):
 `... --script res://tests/visual/drive_enemies.gd` (mismos parámetros que el anterior).
 
+Recorrido del Hito 3 (partida simulada: laberinto + torretas, consulta de torreta, asalto, construcción en combate con
+recargo, bajas, recompensas, limpieza): `... --script res://tests/visual/drive_combat.gd`.
+
+Benchmark de combate (25/50/100 enemigos × 0/10/20 torretas): `tests/perf/bench_combat.gd` (mismos modos que
+`bench_enemies.gd`).
+
 Benchmark de enemigos (10/25/50/100, población constante, cambios de laberinto periódicos):
 
 ```bash
@@ -67,8 +73,8 @@ Análisis estático (opcional, no requiere Godot): `pip install "gdtoolkit==4.*"
 | 6 | Rutas actualizadas al construir | `test_routes_update_after_build` | ✅ |
 | 7 | Rutas actualizadas al retirar | `test_routes_update_after_removal_with_refund` | ✅ |
 | 8 | Enemigos llegan a la base | `test_enemies::test_reaches_base_and_damages_hq_once`, `test_many_enemies_all_arrive_without_crossing_walls`, `drive_enemies` | ✅ |
-| 9 | Destrucción de enemigos | `test_damage_armor_death_and_reward` (vía API; sin torretas aún) | ✅ parcial |
-| 10 | Aplicación de daño | `test_damage_armor_death_and_reward` (blindaje genérico; tipos de daño en Hito 3) | ✅ parcial |
+| 9 | Destrucción de enemigos | `test_hmg_destroys_infantry_and_pays_reward`, `test_splash_kills_reward_each_victim_once`, `drive_combat` (10/10) | ✅ |
+| 10 | Aplicación de daño | `test_damage_table_specialisation`, `test_roster_damage_uses_type_and_armor`, `test_each_projectile_damages_exactly_once`, `test_splash_hits_each_unit_once_with_falloff` | ✅ |
 | 11 | Fin de oleada | — Hito 4 | ⬜ |
 | 12 | Victoria y derrota | Derrota: `test_defeat_when_hq_destroyed_and_simulation_freezes`, `drive_enemies`. Victoria: Hito 4 | ✅ parcial |
 | 13 | Reinicio sin estado residual | `test_new_session_has_no_residual_state`, `test_new_session_has_no_enemy_residue`, RESTART en `drive_battle` | ✅ |
@@ -198,4 +204,67 @@ prohibido por regla) y con un ciclo de referencias propio (lambda capturando la 
 descartada porque no mide lo que su nombre sugiere en este entorno.
 
 Capturas: `docs/screenshots/` (`enemies_assault.png`, `rerouted_during_combat.png`, `zoomed_in.png`, `defeat.png`).
+
+### Sesión 4 — 2026-11-07 (Hito 3, Godot 4.7.2, mismo contenedor)
+
+Línea base antes de tocar nada: 60/60.
+
+**Auditoría de integración**
+
+| Id | Hallazgo | Acción |
+|---|---|---|
+| A1 | Blindaje = una fracción escalar: no permite especializar armas | Tabla tipo × clase (D-016); `GENERIC` conserva los valores previos (ninguna prueba anterior cambió de resultado) |
+| A2 | `StructureData` ya tenía `Category.TURRET` | Torretas = estructuras con `TurretData`; construcción/rutas/navegación reutilizadas sin cambios |
+| A3 | `GridModel` emite altas/bajas | `CombatSystem` las escucha (sin acoplarse a construcción) |
+| A4 | El coste se leía de `data.cost` en dos sitios | `price_of()` único; preview y cobro usan el mismo `Check.cost` |
+| A5 | No había "progreso hacia la base" | `Targeting.remaining_cells` desde el campo de flujo (ruta real) |
+| A6 | Torretas giran cada frame; `GridView` redibuja todo | Nodos `TurretView` aparte |
+| B1 | **Bug encontrado por prueba:** en el tick en que caía el HQ, el combate aún se actualizaba y una torreta disparaba tras la derrota | `tick()` comprueba `is_over()` entre enemigos y combate |
+| B2 | Regla CLAUDE.md "colores solo desde Palette" incumplida en código nuevo y en `EnemyView` previo | Colores de efectos/materiales movidos a `Palette` |
+| B3 | Panel lateral con 6 botones: 1334 px de 1004 (detectado por la prueba de regresión) | Rejilla de 2 columnas agrupada; peor caso verificado |
+| B4 | Error de inferencia de tipos en `CombatLayer` (`fx[5]` es Variant) | Tipo explícito; lo detectaron el driver y la prueba de humo |
+
+**Resultados**
+
+| Verificación | Resultado |
+|---|---|
+| `run_tests.gd` | ✅ **96/96** (60 anteriores + 36 nuevas: `test_combat_construction` 11, `test_combat` 11, `test_combat_projectiles` 14), sin `SCRIPT ERROR` ni fugas |
+| `drive_battle.gd` | ✅ 14/14 |
+| `drive_enemies.gd` | ✅ 15/15 (con presupuesto de prueba +400 CR por el recargo; la comprobación es de rutas, no de economía) |
+| `drive_combat.gd` | ✅ 20/20 — presupuesto de demo 300 + 600 CR; 7 muros + HMG×2 + misiles + AA; HMG a 100 CR en BUILD y **125 CR (+25)** en combate (HUD `125 CR*`, nota de recargo, etiqueta del fantasma); 154 disparos de HMG, 8 misiles, **0 del AA** (sin aéreos); **10/10 bajas, 106 CR de recompensa, HQ 20 → 20**; vuelta a BUILD, 0 proyectiles/vistas residuales, precios de nuevo base |
+| Arranque menú / batalla | ✅ sin errores |
+| `gdlint` | ✅ |
+
+**Pruebas de mutación** (todas detectadas, código restaurado): proyectiles nunca eliminados → 2 fallos; ignorar
+alcance → 1; ignorar capas → 1; cobrar el coste base en vez del precio mostrado → 2; balas que "aciertan" objetivos
+muertos → 1; sin caída de daño de área → 2; torretas que disparan tras la derrota → 1.
+
+**Rendimiento — lógica headless** (Xeon 2,3 GHz; 600 ticks; población constante; 2 pasadas, rango):
+
+| Enemigos × torretas | Movimiento | Combate | Simulación total/tick | Proyectiles pico |
+|---|---|---|---|---|
+| 100 × 0 | 80–83 µs | < 1 µs | 0,08 ms | 0 |
+| 25 × 10 | 22–23 µs | 30–31 µs | 0,05 ms | 5 |
+| 100 × 10 | 84–86 µs | 70–73 µs | 0,15–0,16 ms | 5 |
+| 25 × 20 | 21–22 µs | 50 µs | 0,07 ms | 7 |
+| 100 × 20 | 83–84 µs | 127–132 µs | 0,21 ms | 7 |
+
+Antes de D-017 (búsqueda de objetivo cada frame) el combate 100 × 20 costaba 653–727 µs (pico 2,8 ms).
+
+**Rendimiento — escena con render** (Xvfb + llvmpipe, **rasterizado por software**, 1920×1080, 4 s por caso):
+
+| Enemigos × torretas | FPS | Frame medio | Nuestro CPU (sim + vistas + dibujo de efectos) | Efectos pico |
+|---|---|---|---|---|
+| 25 × 0 | 48 | 20,9 ms | 0,12 ms | 0 |
+| 100 × 0 | 39 | 25,8 ms | 0,32 ms | 0 |
+| 100 × 10 | 33 | 30,3 ms | 0,83 ms | 117 |
+| 25 × 20 | 42 | 23,6 ms | 0,55 ms | 148 |
+| 100 × 20 | 32–33 | 30,8 ms | 0,92 ms | 127 |
+
+Interpretación: nuestro código cuesta < 1 ms/frame en el peor caso medido; el resto del frame es el rasterizador por
+software del contenedor (línea base ~18–21 ms sin nada). **No hay medición en GPU ni CPU móvil**: no se puede afirmar
+60 FPS en Android hasta medir en un dispositivo (Hito 5). No medido: memoria de vídeo, batería, temperatura.
+
+Capturas: `docs/screenshots/` (`defences_ready`, `firefight`, `firefight_zoomed`, `combat_build_surcharge`,
+`after_battle` + las de hitos anteriores, regeneradas con los nuevos enemigos).
 

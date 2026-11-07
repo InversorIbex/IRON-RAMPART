@@ -66,3 +66,17 @@ Neutros derivados (terreno, roca, hormigón) se definen en `Palette` como variac
 
 - Sacos: tres franjas arena. Muro: bloque gris con biselado. Barrera AT: "X" de acero (erizo checo).
 - Spawn: marco rojo con "IN". Base: marco dorado con "HQ".
+
+## Hito 3 — contraste de enemigos y efectos de combate (placeholders)
+
+- **Problema medido en capturas del Hito 2:** cuerpos caqui sobre arena = bajo contraste.
+- **Regla nueva:** facción enemiga = casco oscuro (`Palette.ENEMY_HULL`) + **contorno claro** de 2 px
+  (`ENEMY_OUTLINE`) + marca roja (`ALERT_RED`: banda de casco o chevrón). Se lee sobre arena, roca y rutas.
+- Tamaños visuales (solo dibujo; la navegación es por celdas): infantería 0,42; vehículo ligero 0,74 × 0,50;
+  tanque 0,94 × 0,70 celdas. Destello claro al recibir impacto; barra de vida con fondo oscuro.
+- Torretas: base octogonal fija (GridView) + arma giratoria (TurretView) con retroceso y fogonazo.
+- Efectos: trazadora con halo + núcleo; misil con motor y estela de humo; chispas direccionales; explosión
+  (bola de fuego + anillo + humo + quemadura 6–8 s); restos en vehículos destruidos; sacudida de cámara ligera en
+  explosiones de misil y destrucción de blindados.
+- Todos los colores de efectos y materiales están en `Palette` (`FX_*`, `METAL*`, `TRACK`, `SHADOW`).
+

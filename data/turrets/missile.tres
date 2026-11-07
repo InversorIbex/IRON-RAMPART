@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="TurretData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/turret_data.gd" id="1_tdata"]
+
+[resource]
+script = ExtResource("1_tdata")
+id = &"missile"
+damage = 120.0
+damage_type = 2
+fire_interval = 1.6
+range_cells = 4.5
+projectile = 1
+projectile_speed = 7.0
+splash_radius_cells = 0.9
+splash_falloff = 0.5
+target_layers = 1
+priority = 2
+turn_speed_deg = 180
+aim_tolerance_deg = 20
+silhouette = 1
