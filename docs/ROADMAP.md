@@ -2,32 +2,33 @@
 
 Leyenda: ✅ hecho y verificado · 🧪 implementado, pendiente de ejecutar en Godot · ⬜ pendiente
 
-## Hito 0 — Preparación 🧪
+## Hito 0 — Preparación ✅
 
 - ✅ Inspección del entorno (ver TESTING.md §Entorno)
 - ✅ Elección de versión (Godot 4.7.2) y renderizador (D-001, D-002)
-- 🧪 Proyecto Godot: `project.godot`, 1920×1080 lógico, landscape, GL Compatibility, back de Android
+- ✅ Proyecto Godot: `project.godot`, 1920×1080 lógico, landscape, GL Compatibility, back de Android
 - ✅ Repositorio Git, `.gitignore`, `.gitattributes`, `.editorconfig`, `gdlintrc`
 - ✅ Documentación inicial
-- 🧪 Menú principal + escena de batalla
-- ⬜ **Verificación de arranque en Godot** ← bloqueante para cerrar el hito
+- ✅ Menú principal + escena de batalla
+- ✅ Verificación de arranque en Godot 4.7.2 (TESTING.md, sesión 2)
 
 Criterio: el proyecto se abre sin errores y se ejecuta una escena básica.
 
-## Hito 1 — Grid y construcción 🧪
+## Hito 1 — Grid y construcción ✅ (escritorio; táctil en dispositivo pendiente → Hito 5)
 
-- 🧪 Mapa de 24×16 desde JSON con validación
-- 🧪 Cuadrícula, ocupación, huellas multicelda
-- 🧪 Construcción con previsualización verde/roja y motivo
-- 🧪 Validación de rutas por spawn y por clase de movimiento
-- 🧪 Retirada con confirmación en dos toques y reembolso
-- 🧪 Rutas visibles por clase, recalculadas solo al cambiar la topología
-- 🧪 40 pruebas (casos 1–7, 13 parcial, 14 + reglas por clase, wallet, smoke de escenas)
-- ⬜ Ejecutar pruebas en Godot y prueba manual del flujo táctil
+- ✅ Mapa de 24×16 desde JSON con validación
+- ✅ Cuadrícula, ocupación, huellas multicelda
+- ✅ Construcción con previsualización verde/roja y motivo
+- ✅ Validación de rutas por spawn y por clase de movimiento
+- ✅ Retirada con confirmación en dos toques y reembolso
+- ✅ Rutas visibles por clase, recalculadas solo al cambiar la topología
+- ✅ 40 pruebas (casos 1–7, 13 parcial, 14 + reglas por clase, wallet, smoke de escenas)
+- ✅ Pruebas en Godot (40/40) y recorrido con render e input simulado (14/14)
+- ⬜ Prueba con dedo real en dispositivo Android (Hito 5, riesgo R-1)
 
 Criterio: el jugador puede construir obstáculos y modificar caminos sin bloquear ilegalmente la base.
 
-## Hito 2 — Enemigos y navegación ⬜ (no empezar hasta cerrar Hito 1 en motor)
+## Hito 2 — Enemigos y navegación ⬜ ← siguiente
 
 - Datos `EnemyData` (Resource): vida, velocidad, clase de movimiento, blindaje, daño a base, recompensa
 - Spawner de prueba; enemigos con movimiento interpolado entre centros de celda
@@ -60,14 +61,14 @@ Sesiones de prueba, ajuste de dificultad/economía, claridad visual, lista de me
 | Id | Riesgo | Mitigación |
 |---|---|---|
 | R-1 | **Precisión táctil**: 16 filas en un móvil de 6,5" ⇒ celda ≈ 4 mm, menor que un dedo | Gesto "arrastrar y soltar" (implementado); evaluar en dispositivo: zoom/pan de cámara, fantasma desplazado sobre el dedo, o botón de confirmar |
-| R-2 | Código no ejecutado aún en Godot | Primera tarea de la próxima sesión: importar, pruebas, smoke manual |
+| R-2 | ~~Código no ejecutado en Godot~~ | Resuelto en sesión 2 |
 | R-3 | Enemigos atrapados si se permite construir en combate | Hoy se prohíbe; diseñar regla en Hito 2 |
 | R-4 | `.json` no incluidos en el export | Filtro `*.json` en el preset (D-005) |
 | R-5 | Rendimiento con muchas unidades | Medir en Hito 2; plan B campo de flujo (D-004) |
 
 ## Tareas pendientes inmediatas
 
-1. Instalar Godot 4.7.2 y ejecutar `--import`, pruebas y smoke (TESTING.md).
-2. Corregir lo que aparezca y marcar Hito 0/1 como ✅ con la salida real.
-3. Prueba manual: construir un laberinto completo en la misión 1, intentar cerrar ambos spawns, probar retirada.
-4. Revisar en el editor el aspecto del HUD a 16:9 y 20:9.
+1. Revisión humana del Hito 1 en el editor (jugar la misión 1 con ratón): ¿se entiende la regla, se leen las rutas?
+2. Hito 2: `EnemyData`, spawner de prueba, movimiento interpolado, re-path en `topology_changed`, daño a la base.
+3. Añadir CI (GitHub Actions) que ejecute `run_tests.gd` con Godot 4.7.2 headless.
+4. Cosmético: centrar la franja del menú bajo el título; la etiqueta "IN" del spawn queda tapada por las rutas.

@@ -30,7 +30,7 @@ func setup(session: GameSession, structures: Array[StructureData]) -> void:
 	_session = session
 	_structures = structures
 	theme = UiTheme.build()
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_button_group.allow_unpress = true
@@ -63,7 +63,7 @@ func show_feedback(text: String, is_error: bool) -> void:
 
 func _build_top_bar() -> void:
 	_top_bar = PanelContainer.new()
-	_top_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_top_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_top_bar.custom_minimum_size.y = TOP_BAR_HEIGHT
 	add_child(_top_bar)
 	var row := HBoxContainer.new()
@@ -95,6 +95,8 @@ func _build_side_panel() -> void:
 	_side_panel.anchor_bottom = 1.0
 	_side_panel.offset_left = -PANEL_WIDTH
 	_side_panel.offset_top = TOP_BAR_HEIGHT
+	# If content ever exceeds PANEL_WIDTH, grow towards the map, never off-screen.
+	_side_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_child(_side_panel)
 
 	var col := VBoxContainer.new()
@@ -131,26 +133,28 @@ func _build_side_panel() -> void:
 	_feedback_label.custom_minimum_size.y = 90
 	col.add_child(_feedback_label)
 
-	var legend := UiTheme.label("Routes:  INFANTRY  /  WHEELED  /  TRACKED", 18)
-	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(legend)
-	var legend_row := HBoxContainer.new()
+	col.add_child(UiTheme.label("ENEMY ROUTES", 18, Palette.MILITARY_GREEN.lightened(0.3)))
 	for bit in MovementClass.ALL:
+		var color: Color = GridView.ROUTE_STYLE[bit]["color"]
+		var legend_row := HBoxContainer.new()
+		legend_row.add_theme_constant_override("separation", 12)
 		var swatch := ColorRect.new()
-		swatch.color = GridView.ROUTE_STYLE[bit]["color"]
-		swatch.custom_minimum_size = Vector2(60, 8)
+		swatch.color = color
+		swatch.custom_minimum_size = Vector2(36, 6)
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		legend_row.add_child(swatch)
-	col.add_child(legend_row)
+		legend_row.add_child(UiTheme.label(MovementClass.to_name(bit).to_upper(), 18, color))
+		col.add_child(legend_row)
 
 
 func _build_pause_overlay() -> void:
 	_pause_overlay = ColorRect.new()
 	(_pause_overlay as ColorRect).color = Color(Palette.OLIVE_BLACK, 0.85)
-	_pause_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pause_overlay.visible = false
 	add_child(_pause_overlay)
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pause_overlay.add_child(center)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 20)

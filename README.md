@@ -5,9 +5,11 @@
 Military Maze Tower Defense para Android (2D cenital, horizontal, offline, single-player).
 El jugador no defiende rutas fijas: **construye el laberinto** que siguen los enemigos.
 
-**Estado:** Hito 0 (preparación) y Hito 1 (cuadrícula + construcción + validación de rutas)
-implementados. **Ninguno ha sido ejecutado todavía en Godot**: en el entorno donde se escribió
-no había Godot disponible. Ver [docs/TESTING.md](docs/TESTING.md) para el estado real de verificación.
+**Estado:** Hito 0 (preparación) y Hito 1 (cuadrícula + construcción + validación de rutas) completados y
+verificados en Godot 4.7.2: 40/40 pruebas y recorrido de juego con render 14/14. Falta probarlo con el dedo
+en un dispositivo Android. Detalle en [docs/TESTING.md](docs/TESTING.md). Gráficos: placeholders.
+
+![Construcción rechazada con motivo](docs/screenshots/build_rejected.png)
 
 ## Requisitos
 

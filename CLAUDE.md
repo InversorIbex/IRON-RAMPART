@@ -10,9 +10,9 @@ todas las rutas. Detalle: `docs/GAME_DESIGN.md`.
 
 ## Estado del proyecto (actualiza esta sección al cerrar cada sesión)
 
-- Hito 0 y Hito 1: **implementados, sin ejecutar en Godot** (la sesión 1 no tenía Godot). Ver `docs/TESTING.md`.
-- **Primera tarea de la próxima sesión:** con Godot 4.7.2 disponible, ejecutar import + pruebas + smoke,
-  corregir y actualizar TESTING.md/ROADMAP.md con la salida real. No empezar el Hito 2 antes.
+- Hito 0 ✅ y Hito 1 ✅ verificados en Godot 4.7.2 (sesión 2): 40/40 pruebas, recorrido con render 14/14.
+  Pendiente del Hito 1: prueba con dedo real en Android (se hará en el Hito 5).
+- Siguiente: Hito 2 (enemigos y navegación). Ver `docs/ROADMAP.md`.
 - Pendientes y riesgos: `docs/ROADMAP.md`.
 
 ## Comandos
@@ -22,10 +22,13 @@ godot --headless --path . --import                            # 1ª vez / tras a
 godot --headless --path . --script res://tests/run_tests.gd   # pruebas (exit 0 = OK)
 godot --headless --path . --quit-after 300                    # smoke de arranque
 godot --path .                                                # jugar
+# Recorrido E2E con render + capturas (Linux sin pantalla: Xvfb)
+IR_SHOTS_DIR=/tmp/shots xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --resolution 1920x1080 \
+  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd
 ```
 
-Estado de verificación de estos comandos: **escritos según la CLI de Godot 4, aún no ejecutados en este
-proyecto** (sesión 1). Cuando se ejecuten, sustituye esta línea por la fecha y el resultado.
+Verificados el 2026-11-07 con Godot 4.7.2-stable (todos exit 0). En un contenedor cloud Godot no está
+instalado: hay que descargar el binario portable oficial (con autorización del usuario) y verificar su SHA-512.
 Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, no semántica.
 
 ## Arquitectura (resumen; detalle en `docs/ARCHITECTURE.md`)
@@ -49,6 +52,10 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
 - Arrays empaquetados (`Packed*Array`) se copian al pasar/leer de propiedades: para acumular resultados usa
   `Array[T]` o construye local y asigna.
 - Tras `if x is Tipo`, castea explícitamente (`x as Tipo`) antes de acceder a miembros del subtipo.
+- UI creada por código: usa `set_anchors_and_offsets_preset()`, **nunca** `set_anchors_preset()` a secas
+  (conserva el rect 0×0 inicial y deja el control fuera de pantalla). Lo vigila `test_scenes_smoke`.
+- Tras cambiar UI, ejecuta `tests/visual/drive_battle.gd` y **mira las capturas**: las pruebas headless no ven el layout.
+- Versiona los `*.uid` y `*.import` que genera Godot. `docs/` lleva `.gdignore` (no se importa al juego).
 
 ## Reglas para añadir sistemas
 

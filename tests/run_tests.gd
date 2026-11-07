@@ -15,6 +15,12 @@ const SUITES := [
 
 
 func _initialize() -> void:
+	# The root viewport is not inside the tree yet during _initialize(), so nodes
+	# added now would not receive _ready(). Run once the main loop has started.
+	_run.call_deferred()
+
+
+func _run() -> void:
 	var total := 0
 	var failed := 0
 	print("IRON RAMPART tests - Godot %s" % Engine.get_version_info()["string"])

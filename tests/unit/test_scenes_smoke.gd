@@ -34,4 +34,12 @@ func test_battle_instantiates_with_session() -> void:
 	assert_not_null(battle.get("grid_view"))
 	if session != null:
 		assert_true(session.construction.all_routes_open())
+	# Regression: HUD built in code must cover the viewport and keep the build
+	# panel on screen (set_anchors_preset alone left it 0x0 and the panel at x<0).
+	var hud: BattleHud = battle.get("hud")
+	if hud != null:
+		var vp := tree.root.get_visible_rect()
+		assert_eq(hud.get_global_rect().size, vp.size, "HUD covers the viewport")
+		var panel: Control = hud._side_panel
+		assert_true(vp.encloses(panel.get_global_rect()), "build panel on screen: %s" % panel.get_global_rect())
 	battle.free()

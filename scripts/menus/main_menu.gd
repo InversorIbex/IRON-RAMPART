@@ -10,7 +10,7 @@ func _ready() -> void:
 
 	var bg := ColorRect.new()
 	bg.color = Palette.OLIVE_BLACK
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
 	var stripe := ColorRect.new()
@@ -23,7 +23,7 @@ func _ready() -> void:
 	add_child(stripe)
 
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 18)
@@ -52,7 +52,7 @@ func _ready() -> void:
 
 	var version := UiTheme.label("v%s  -  prototype" % ProjectSettings.get_setting("application/config/version", "0.0.0"),
 			18, Palette.SANDSTONE.darkened(0.3))
-	version.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	version.offset_left = 24
 	version.offset_top = -56
 	version.offset_bottom = -16
