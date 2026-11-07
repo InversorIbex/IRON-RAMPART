@@ -26,6 +26,10 @@ const RETARGET_INTERVAL := 0.1
 ## Scan phases are staggered across turrets to avoid spikes on one frame.
 const RETARGET_PHASES := 6
 
+## Profiling counters (microseconds of the last update), read by benchmarks.
+var last_turrets_usec: int = 0
+var last_projectiles_usec: int = 0
+
 var _grid: GridModel
 var _roster: EnemyRoster
 var _nav: NavGrid
@@ -60,9 +64,13 @@ func update(delta: float) -> void:
 	if delta <= 0.0:
 		return
 	var enemies := _roster.get_enemies()
+	var t0 := Time.get_ticks_usec()
 	for turret in _turrets:
 		_update_turret(turret, delta, enemies)
+	var t1 := Time.get_ticks_usec()
 	_update_projectiles(delta)
+	last_turrets_usec = t1 - t0
+	last_projectiles_usec = Time.get_ticks_usec() - t1
 
 
 ## Clears projectiles (e.g. mission over). Turrets stay with the grid.

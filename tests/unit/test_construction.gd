@@ -164,11 +164,11 @@ func test_non_blocking_structure_skips_route_check() -> void:
 func test_build_and_remove_locked_outside_build_phase() -> void:
 	var s := H.make_session(H.OPEN_LAYOUT, 100, {"allow_build_during_combat": false})
 	s.construction.build(H.wall(25), Vector2i(4, 0))
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	assert_eq(s.construction.build(H.wall(25), Vector2i(5, 0)).reason, ConstructionService.Reason.PHASE_LOCKED)
 	assert_eq(s.construction.remove_at(Vector2i(4, 0)).reason, ConstructionService.Reason.PHASE_LOCKED)
 	assert_eq(s.wallet.get_credits(), 75)
-	s.set_phase(GameSession.Phase.BUILD)
+	s.set_phase(GameSession.Phase.WAVE_COMPLETED) # back to a build phase
 	assert_true(s.construction.remove_at(Vector2i(4, 0)).is_ok())
 
 
@@ -187,4 +187,4 @@ func test_new_session_has_no_residual_state() -> void:
 	assert_eq(s2.wallet.get_credits(), 100)
 	assert_false(s2.grid.is_occupied(Vector2i(4, 2)))
 	assert_eq(_path(s2, MovementClass.INFANTRY).size(), 8)
-	assert_eq(s2.phase, GameSession.Phase.BUILD)
+	assert_eq(s2.phase, GameSession.Phase.PREPARATION)

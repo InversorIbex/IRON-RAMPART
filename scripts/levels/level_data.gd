@@ -26,6 +26,22 @@ var allow_remove_during_combat: bool = false
 ## Extra fraction charged for new construction during combat (0.25 = +25 %).
 var combat_build_surcharge: float = 0.25
 
+# --- Mission identity and flow (Milestone 4) ---
+var region: String = ""
+var briefing: String = ""
+## Visual identity key (terrain/ambience set). "desert" is the only one so far.
+var theme: String = "desert"
+## Optional names for spawn_cells (same order), used by wave data and intel.
+var spawn_names: PackedStringArray = PackedStringArray()
+var victory_type: String = "survive_all_waves"
+## Seconds the post-wave debrief (WAVE_COMPLETED) lasts before PREPARATION.
+var debrief_seconds: float = 3.0
+var waves: Array[WaveData] = []
+
+
+func spawn_name(index: int) -> String:
+	return spawn_names[index] if index < spawn_names.size() else "spawn %d" % index
+
 
 func terrain_at(cell: Vector2i) -> int:
 	return terrain[cell.y * width + cell.x]

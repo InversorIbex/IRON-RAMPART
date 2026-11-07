@@ -46,7 +46,7 @@ func test_missile_explodes_at_last_position_when_target_lost() -> void:
 	s.enemies.damage(victim, 10000.0)
 	_run(s, 5.0)
 	assert_eq(_explosions, 1, "missile still detonates")
-	assert_eq(neighbour.hp, 140.0 - 50.0, "splash share: 100 x 0.5 falloff x 1.0 (EXPLOSIVE vs LIGHT)")
+	assert_eq(neighbour.hp, neighbour.max_hp - 50.0, "splash share: 100 x 0.5 falloff x 1.0 (EXPLOSIVE vs LIGHT)")
 
 
 func test_splash_hits_each_unit_once_with_falloff() -> void:
@@ -185,15 +185,17 @@ func test_turret_defence_reduces_hq_damage() -> void:
 	for with_turrets in [false, true]:
 		var level := LevelLoader.load_file("res://data/levels/mission_01.json").level
 		level.starting_credits = 10000
+		# One column: 6 infantry + 3 light vehicles + 1 tank = 17 potential HQ damage.
+		var column: Array[WaveData] = [H.wave("column", [["infantry", 6, 0.0, 0.8], ["light_vehicle", 3, 2.0, 2.4],
+				["heavy_tank", 1, 4.0, 1.0]])]
+		level.waves = column
 		var s := GameSession.new(level)
 		if with_turrets:
 			for c in [Vector2i(19, 7), Vector2i(19, 8), Vector2i(18, 2), Vector2i(10, 7)]:
 				_place(s, StructureCatalog.load_structure(&"turret_hmg"), c)
 			_place(s, StructureCatalog.load_structure(&"turret_missile"), Vector2i(19, 9))
-		s.set_phase(GameSession.Phase.COMBAT)
-		var assault := TestAssault.new(s)
+		assert_true(s.start_wave())
 		for i in int(60.0 / DT):
-			assault.update(DT)
 			s.tick(DT)
 		damage.append(level.base_max_hp - s.base_hp)
 	assert_eq(damage[0], 17, "undefended: the whole column reaches the HQ")

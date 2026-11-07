@@ -48,7 +48,7 @@ func _make_session() -> GameSession:
 		s.construction.build(wall, Vector2i(7, y))
 	for y in range(3, 16):
 		s.construction.build(wall, Vector2i(14, y))
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	_s = s
 	s.enemies.enemy_reached_base.connect(_respawn)
 	return s
@@ -133,7 +133,7 @@ func _bench_render(n: int) -> void:
 		s.construction.build(wall, Vector2i(7, y))
 	for y in range(3, 16):
 		s.construction.build(wall, Vector2i(14, y))
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	_s = s
 	s.enemies.enemy_reached_base.connect(_respawn)
 	_populate(s, n)

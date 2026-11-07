@@ -14,6 +14,9 @@ var id: int
 var data: EnemyData
 var movement: int
 var hp: float
+## Per-unit stats after wave modifiers (EnemyData stays shared and untouched).
+var max_hp: float
+var speed: float
 var state: int = State.MOVING
 var cell: Vector2i
 var next_cell: Vector2i
@@ -29,11 +32,14 @@ var cells_walked: int = 0
 var hits_taken: int = 0
 
 
-func _init(p_id: int, p_data: EnemyData, spawn_cell: Vector2i) -> void:
+func _init(p_id: int, p_data: EnemyData, spawn_cell: Vector2i,
+		hp_multiplier: float = 1.0, speed_multiplier: float = 1.0) -> void:
 	id = p_id
 	data = p_data
 	movement = p_data.movement
-	hp = p_data.max_hp
+	max_hp = p_data.max_hp * hp_multiplier
+	speed = p_data.speed * speed_multiplier
+	hp = max_hp
 	cell = spawn_cell
 	next_cell = spawn_cell
 

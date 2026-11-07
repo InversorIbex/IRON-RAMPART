@@ -39,6 +39,11 @@ recargo, bajas, recompensas, limpieza): `... --script res://tests/visual/drive_c
 Benchmark de combate (25/50/100 enemigos × 0/10/20 torretas): `tests/perf/bench_combat.gd` (mismos modos que
 `bench_enemies.gd`).
 
+Hito 4: recorrido completo menú → victoria → reinicio → derrota → menú: `tests/visual/drive_mission.gd`.
+Benchmark de una partida completa: `tests/perf/bench_mission.gd` (`-- --render` con Xvfb).
+Simulación de equilibrio: `godot --headless --path . --script res://tests/sim/sim_mission.gd [-- --maps --verbose]`.
+Los drivers tienen un watchdog (600 s reales): si mueren por un error de script salen con código 2.
+
 Benchmark de enemigos (10/25/50/100, población constante, cambios de laberinto periódicos):
 
 ```bash
@@ -75,9 +80,9 @@ Análisis estático (opcional, no requiere Godot): `pip install "gdtoolkit==4.*"
 | 8 | Enemigos llegan a la base | `test_enemies::test_reaches_base_and_damages_hq_once`, `test_many_enemies_all_arrive_without_crossing_walls`, `drive_enemies` | ✅ |
 | 9 | Destrucción de enemigos | `test_hmg_destroys_infantry_and_pays_reward`, `test_splash_kills_reward_each_victim_once`, `drive_combat` (10/10) | ✅ |
 | 10 | Aplicación de daño | `test_damage_table_specialisation`, `test_roster_damage_uses_type_and_armor`, `test_each_projectile_damages_exactly_once`, `test_splash_hits_each_unit_once_with_falloff` | ✅ |
-| 11 | Fin de oleada | — Hito 4 | ⬜ |
-| 12 | Victoria y derrota | Derrota: `test_defeat_when_hq_destroyed_and_simulation_freezes`, `drive_enemies`. Victoria: Hito 4 | ✅ parcial |
-| 13 | Reinicio sin estado residual | `test_new_session_has_no_residual_state`, `test_new_session_has_no_enemy_residue`, RESTART en `drive_battle` | ✅ |
+| 11 | Fin de oleada | `test_waves::test_wave_ends_only_when_all_spawned_and_none_alive`, `test_units_reaching_the_hq_also_resolve_the_wave` | ✅ |
+| 12 | Victoria y derrota | `test_game_state::test_victory_after_last_wave`, `test_defeat_stops_waves_and_projectiles`, `test_mission_flow`, `drive_mission` | ✅ |
+| 13 | Reinicio sin estado residual | `test_mission_flow::test_restart_after_victory_is_clean` / `_after_defeat_is_clean`, `drive_mission` (weakref: sesión anterior liberada) | ✅ |
 | 14 | Datos inválidos no fallan en silencio | `test_level_loader` (8 pruebas, ~25 variantes), `test_catalog` | ✅ |
 
 Además: conversiones de coordenadas, límites, huellas multicelda, reglas por clase de movimiento
@@ -267,4 +272,71 @@ software del contenedor (línea base ~18–21 ms sin nada). **No hay medición e
 
 Capturas: `docs/screenshots/` (`defences_ready`, `firefight`, `firefight_zoomed`, `combat_build_surcharge`,
 `after_battle` + las de hitos anteriores, regeneradas con los nuevos enemigos).
+
+### Sesión 5 — 2026-11-07 (Hito 4, Godot 4.7.2, mismo contenedor)
+
+Línea base antes de tocar nada: 96/96 (Hito 3 verificado de nuevo, sin huecos críticos).
+
+**Auditoría**
+
+| Id | Hallazgo | Acción |
+|---|---|---|
+| G1 | Sin máquina de estados: `set_phase()` aceptaba cualquier transición; no existía la victoria | D-018: tabla `TRANSITIONS`, estados finales |
+| G2 | Pausa solo en el `SceneTree` del HUD: la lógica no la conocía ni se podía probar | `pause()/resume()` en la sesión, recuerdan el estado previo |
+| G3 | `TestAssault` y el paso combate→construcción vivían en el nodo `Battle` | `WaveManager` + estados en `GameSession`; `TestAssault` eliminado |
+| G4 | Vida/velocidad leídas del `EnemyData` compartido: imposible modificar por oleada | `Enemy.max_hp/speed` por unidad |
+| G5 | Sin estadísticas, puntuación ni datos de misión (oleadas, identidad) | `MissionStats`, `MissionScore`, formato de misión ampliado |
+| T1 | **Bug del ejecutor de pruebas:** una suite con error de parseo se saltaba en silencio y el ejecutor devolvía 0 (82/82 en vez de fallar) | `can_instantiate()`: ahora cuenta como `[LOAD FAIL]` y sale con 1 (verificado) |
+| T2 | Nueva lógica: en PREPARATION las balas en vuelo se congelaban; DEFEAT solo era posible desde WAVE_ACTIVE | Corregido antes de cerrar (detectado por pruebas existentes) |
+| T3 | `drive_enemies` usaba el antiguo panel de derrota: `SCRIPT ERROR` y el driver se colgaba hasta el `timeout` | Referencia corregida + watchdog en los 4 drivers (verificado: error inyectado → salida 2 en 5,4 s) |
+| T4 | Aviso "4 ObjectDB instances leaked at exit" en el benchmark con render | Investigado con `--verbose`: `AudioStreamPlaybackWAV`/`AudioStreamWAV` de `Sfx` cuando el proceso termina con un sonido en curso. **Sin fuga en ejecución:** 6 reinicios con sonido → 1750 objetos, 50 recursos, 0 huérfanos constantes. Benchmark vuelve al menú antes de salir. Un intento de arreglo en `Sfx._exit_tree` no tuvo efecto y se revirtió |
+| T5 | Valores de datos escritos a mano en pruebas/drivers (créditos 300, vida 140) | Ahora se leen de `LevelData`/`Enemy` |
+
+**Resultados**
+
+| Verificación | Resultado |
+|---|---|
+| `run_tests.gd` | ✅ **126/126** (96 + 30 nuevas: `test_waves` 9, `test_mission_data` 5, `test_game_state` 11, `test_mission_flow` 5), sin errores ni fugas |
+| Mutaciones (6, todas detectadas) | simular en pausa → 2 fallos; fin de oleada sin esperar al calendario → 1; bono pagado dos veces → 4; PREPARATION→VICTORY permitido → 1; recompensa por fugas → 3; reanudar siempre en PREPARATION → 2 |
+| `gdlint` | ✅ |
+
+**Simulación de equilibrio** (`sim_mission.gd`, paso fijo 1/60 s, determinista; datos finales):
+
+| Estrategia | Resultado | HQ | Bajas | Ingresos (bajas + bonos) | Gastado | Nota |
+|---|---|---|---|---|---|---|
+| A: laberinto largo de sacos (~40 celdas) | Derrota en la 5 | 0 | 83 | 1020 | 1070 | Los sacos no desvían tanques: la oleada 5 rompe la defensa |
+| A2: mismo laberinto con hormigón | Derrota en la 3 | 0 | 25 | 255 | 530 | Invertir antes en obstáculos caros que en fuego se castiga |
+| B: potencia de fuego junto al HQ | **Victoria** | 9/20 | 85 | 1080 | 1020 | |
+| C: embudo (sellar el norte) + mixto | **Victoria** | 9/20 | 85 | 1080 | 1060 | Única que no pierde HQ entre las oleadas 3 y 4 |
+| D: una HMG y acumular | Derrota en la 3 | 0 | 18 | 220 | 100 | Con 470 CR sin usar |
+
+Por oleada (C): 22 s / 22 s / 36 s / 47 s / 43 s de combate; daño al HQ 0 / 6 / 0 / 0 / 5. La oleada 2 cobra 6 HP a
+todas las estrategias (3 ligeros por el norte) y la 5 es la que más exige a las que ganan.
+Los créditos finales (370–410) se ganan durante la última oleada, no son un excedente acumulado.
+
+Iteraciones de equilibrio realizadas (todas con la misma simulación): presupuesto 300 → 350; ligeros 140 → 110 HP,
+recompensa 12 → 10; tanques recompensa 40 → 30; bonos 60/80/100/120 → 60/70/90/110; oleada 4 con tanques cada
+7 s; oleada 5 con 18/9/6 y vida ×1,25. Con los datos iniciales B ganaba sin daño en las oleadas 4–5 y acababa con
+469 CR sin gastar.
+
+**Limitaciones de la simulación:** el jugador scripted construye solo entre oleadas, no retira ni reorganiza, no
+reacciona dentro de la oleada, usa casillas fijas y lee la información de las dos próximas oleadas. Los resultados
+dependen mucho del orden de compra (en las iteraciones, cambiar solo el modelo de compra hizo ganar o perder a B).
+Es una referencia, no sustituye a jugadores reales. **Hallazgo de diseño:** en este mapa el laberinto puro no supera
+a la potencia de fuego (riesgo R-8).
+
+**Rendimiento — partida completa** (C_balanced; Xeon 2,3 GHz):
+
+| Medida | Headless (paso fijo) | Con render (Xvfb + llvmpipe) |
+|---|---|---|
+| Resultado | Victoria, HQ 9 (determinista) | Victoria, HQ 9 y 14 en dos ejecuciones (paso variable) |
+| Simulación por tick | 14,5–14,8 µs: oleadas 0,7 · movimiento 4,9 · torretas 6,6 · proyectiles 1,3 | 0,07 ms/frame |
+| Vistas + dibujo de efectos | — | 0,03 + 0,07 ms/frame |
+| Navegación | 15 recálculos en toda la partida, ~0,34 ms cada uno (solo al construir/retirar) | — |
+| Frame | — | 23,7–24,7 ms de media (42 FPS), peor 43–84 ms: rasterizado **por software** |
+| Picos | 20 enemigos, 5 proyectiles, 6 torretas | 90 nodos |
+| Memoria | +139 KiB estáticos durante la partida | 41,4 MiB estáticos |
+
+Cuellos de botella: ninguno en nuestro código para esta misión (< 0,2 ms/frame); el frame lo domina el render del
+contenedor. **No medido en Android** (sin dispositivo): FPS, memoria de vídeo, batería, temperatura.
 

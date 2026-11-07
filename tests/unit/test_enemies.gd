@@ -119,7 +119,7 @@ func test_tanks_cross_sandbags_others_do_not() -> void:
 
 func test_enemy_reroutes_when_maze_changes_mid_run() -> void:
 	var s := H.make_session(H.OPEN_LAYOUT)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	var e := s.enemies.spawn(_data("infantry"), Vector2i(0, 2))
 	var visited := _run(s, 1.0) # now between (1,2) and (2,2)
 	assert_eq(e.cell, Vector2i(1, 2))
@@ -192,7 +192,7 @@ func test_defeat_when_hq_destroyed_and_simulation_freezes() -> void:
 	var d := H.level_dict(H.OPEN_LAYOUT)
 	d["base_max_hp"] = 4
 	var s := GameSession.new(LevelLoader.parse_dict(d).level)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	s.enemies.spawn(_data("heavy_tank"), Vector2i(0, 2)) # 5 damage
 	var straggler := s.enemies.spawn(_data("heavy_tank"), Vector2i(0, 0)) # 9 cells: arrives later
 	_run(s, 7.0 / 0.8 + 0.5)
@@ -219,7 +219,7 @@ func test_many_enemies_all_arrive_without_crossing_walls() -> void:
 	var level := LevelLoader.load_file("res://data/levels/mission_01.json").level
 	level.base_max_hp = 1000 # keep the HQ alive so every unit can be checked
 	var s := GameSession.new(level)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	var wall := StructureCatalog.load_structure(&"concrete_wall")
 	for y in range(2, 14):
 		s.construction.build(wall, Vector2i(10, y)) # a long wall to route around

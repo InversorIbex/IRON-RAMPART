@@ -62,10 +62,23 @@ Criterio: los enemigos recorren correctamente el laberinto construido por el jug
 Criterio: el jugador puede destruir enemigos colocando defensas estratégicamente. **Cumplido en escritorio**
 (partida simulada: 10/10 enemigos destruidos con el HQ intacto; sin defensas el HQ pierde 17).
 
-## Hito 4 — Oleadas y economía ⬜
+## Hito 4 — Oleadas, economía y primera misión ✅ (escritorio; dispositivo pendiente → Hito 5)
 
-`WaveData` + `WaveManager`, 5 oleadas, fases BUILD↔COMBAT, recompensas, victoria/derrota.
-Herramienta de balance (tabla/CSV de parámetros). Pruebas: casos 11, 12, 13 completo.
+- ✅ Auditoría (TESTING.md sesión 5): sin huecos críticos del Hito 3; corregidos estados/pausa fuera de la sesión,
+  reglas de combate en el nodo `Battle`, ausencia de victoria y de modificadores por unidad
+- ✅ Máquina de estados PREPARATION / WAVE_ACTIVE / WAVE_COMPLETED / VICTORY / DEFEAT / PAUSED (D-018)
+- ✅ `WaveData` + `WaveManager` por datos, calendario determinista (D-019); `TestAssault` eliminado
+- ✅ OPERATION FIRST ASSAULT: 5 oleadas diseñadas y equilibradas por simulación (D-021)
+- ✅ Economía: presupuesto 350, recompensas, bonos de oleada, recargo de combate, libro cuadrado (D-020)
+- ✅ HUD: oleada X/5, estado coloreado, START WAVE, PAUSE, INTEL de la próxima oleada, banners, aviso de blindados,
+  destello de daño al HQ, "+N" por baja, aviso de créditos insuficientes, pantalla de resultados con puntuación
+- ✅ Victoria y derrota con resultados; reinicio limpio (sesión anterior liberada, verificado con weakref)
+- ✅ Formato de misión listo para campaña (identidad, spawns con nombre, victoria, validación completa)
+- ✅ 126 pruebas + 4 recorridos visuales (uno desde el menú hasta la victoria y la derrota) + simulación + benchmark
+- ⬜ Sonido verificado de oído (sin tarjeta de sonido en el entorno)
+- ⬜ Equilibrio validado con personas (Hito 6)
+
+Criterio: existe una partida completa con principio, desarrollo y final. **Cumplido en escritorio.**
 
 ## Hito 5 — Experiencia móvil ⬜
 
@@ -86,11 +99,14 @@ Sesiones de prueba, ajuste de dificultad/economía, claridad visual, lista de me
 | R-4 | `.json` no incluidos en el export | Filtro `*.json` en el preset (D-005) |
 | R-5 | Rendimiento con muchas unidades | Lógica medida: 0,4 ms/frame con 100. Render medido solo con rasterizador software: medir en GPU móvil (Hito 5) |
 | R-6 | ~~Construir en combate (D-012)~~ | Confirmado por el usuario con recargo 25 % (D-015) |
-| R-7 | Equilibrio: la columna de prueba muere entera con 4 torretas (presupuesto de demo 900 CR) | Hito 4/6: oleadas reales y economía con presupuesto 300 |
+| R-7 | Equilibrio validado solo con un jugador scripted | Hito 6: pruebas con personas; el bot es una referencia mínima |
+| R-8 | El laberinto puro no domina en la simulación (gana potencia de fuego / embudo) | Revisar con personas; palancas: coste de sacos/muros, alcance de torretas, mapas que premien rutas largas |
+| R-9 | Con render, el resultado varía entre ejecuciones (paso de tiempo variable) | Esperado; la lógica es determinista con paso fijo (pruebas y simulación) |
 
 ## Tareas pendientes inmediatas
 
-1. Hito 4 (cuando se pida): `WaveData`/`WaveManager`, 5 oleadas, victoria, sustituir `TestAssault`.
-2. Hito 5 (adelantable): APK de depuración para medir FPS real y probar gestos y legibilidad en un teléfono.
+1. **Hito 5 (cuando se pida):** APK de depuración, medición real en un Android de gama media (FPS, memoria,
+   temperatura), gestos y legibilidad con el dedo, sonido real, ajustes y guardado.
+2. Revisar el valor del laberinto (R-8) antes de diseñar más misiones.
 3. CI (GitHub Actions) con Godot 4.7.2 headless: `run_tests.gd` + lint.
-4. Cosmético: franja del menú; etiqueta "IN" tapada por rutas.
+4. Cosmético: franja del menú; etiqueta "IN" tapada por rutas; plurales en INTEL ("3 LIGHT VEHICLE").

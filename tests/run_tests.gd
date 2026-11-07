@@ -15,6 +15,10 @@ const SUITES := [
 	"res://tests/unit/test_combat_construction.gd",
 	"res://tests/unit/test_combat.gd",
 	"res://tests/unit/test_combat_projectiles.gd",
+	"res://tests/unit/test_waves.gd",
+	"res://tests/unit/test_mission_data.gd",
+	"res://tests/unit/test_game_state.gd",
+	"res://tests/unit/test_mission_flow.gd",
 	"res://tests/unit/test_scenes_smoke.gd",
 ]
 
@@ -31,9 +35,12 @@ func _run() -> void:
 	print("IRON RAMPART tests - Godot %s" % Engine.get_version_info()["string"])
 	for path in SUITES:
 		var script: GDScript = load(path)
-		if script == null:
-			printerr("[LOAD FAIL] %s" % path)
+		# A suite with a parse error still loads as a GDScript object; it just
+		# can't be instantiated. Count it as a failure instead of skipping it.
+		if script == null or not script.can_instantiate():
+			print("\n[LOAD FAIL] %s (parse/compile error, see SCRIPT ERROR above)" % path)
 			failed += 1
+			total += 1
 			continue
 		print("\n== %s" % path.get_file())
 		for method in script.get_script_method_list():

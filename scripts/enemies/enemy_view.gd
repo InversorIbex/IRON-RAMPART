@@ -108,9 +108,9 @@ func _draw() -> void:
 	# HP bar and blocked marker stay horizontal: counter-rotate.
 	draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
 	var top_y := -maxf(half.x, half.y) - 14.0
-	if enemy.hp < d.max_hp:
+	if enemy.hp < enemy.max_hp:
 		var w := maxf(size.x, 30.0)
-		var frac := clampf(enemy.hp / d.max_hp, 0.0, 1.0)
+		var frac := clampf(enemy.hp / enemy.max_hp, 0.0, 1.0)
 		var top := Vector2(-w * 0.5, top_y)
 		draw_rect(Rect2(top - Vector2(1, 1), Vector2(w + 2, 8)), Palette.OLIVE_BLACK)
 		draw_rect(Rect2(top, Vector2(w * frac, 6)), Palette.ALERT_RED if frac < 0.35 else Palette.TACTICAL_GOLD)

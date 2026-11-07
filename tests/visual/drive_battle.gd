@@ -6,6 +6,8 @@ extends SceneTree
 ##       --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd
 ## Screenshots go to $IR_SHOTS_DIR or user://shots/. Exit code 0 = all checks OK.
 
+const WATCHDOG_SECONDS := 600.0
+
 var out_dir: String
 var battle: Node
 var log_lines: Array[String] = []
@@ -18,6 +20,11 @@ func _initialize() -> void:
 		out_dir = ProjectSettings.globalize_path("user://shots")
 	out_dir = out_dir.trim_suffix("/") + "/"
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# Watchdog: if the driver coroutine dies on a script error it never reaches
+	# quit(); fail loudly instead of hanging (real-time, ignores time_scale).
+	create_timer(WATCHDOG_SECONDS, true, false, true).timeout.connect(func() -> void:
+		print("DRIVER RESULT: WATCHDOG TIMEOUT (script error or hang)")
+		quit(2))
 	_main.call_deferred()
 
 
@@ -46,7 +53,8 @@ func _main() -> void:
 		_tap_cell(c)
 		await _frames(2)
 	_check(session.grid.placement_count() == 6, "6 sandbags built (got %d)" % session.grid.placement_count())
-	_check(session.wallet.get_credits() == credits0 - 60, "credits 300 -> 240 (got %d)" % session.wallet.get_credits())
+	_check(session.wallet.get_credits() == credits0 - 60,
+			"credits %d -> %d (got %d)" % [credits0, credits0 - 60, session.wallet.get_credits()])
 
 	# 7th sandbag closes the spawn for infantry + wheeled -> must be rejected.
 	var before := session.wallet.get_credits()
@@ -104,10 +112,14 @@ func _main() -> void:
 	await _frames(15)
 	var s2: GameSession = current_scene.session
 	_check(not paused, "unpaused after restart")
-	_check(s2 != session and s2.grid.placement_count() == 0 and s2.wallet.get_credits() == 300, "restart = clean session")
+	_check(s2 != session and s2.grid.placement_count() == 0 and s2.wallet.get_credits() == s2.level.starting_credits,
+			"restart = clean session")
 
 	for l in log_lines:
 		print(l)
+	# Leave the battle before quitting (audio playbacks at shutdown, see CLAUDE.md).
+	change_scene_to_file("res://scenes/menus/main_menu.tscn")
+	await _frames(10)
 	print("DRIVER RESULT: ", "OK" if ok else "FAILED")
 	quit(0 if ok else 1)
 

@@ -1,14 +1,16 @@
 class_name BattleHud
 extends Control
-## Battle HUD: top status bar + right build panel + pause overlay.
+## Battle HUD: top status bar (credits, HQ, wave x/5, mission state, START
+## WAVE, PAUSE), right build panel, intel strip, event banners, HQ-hit flash,
+## pause overlay and the mission results screen.
 ## Emits intent signals; Battle decides what they mean. Built in code until
 ## the UI art pass (then it becomes a .tscn with the same API).
 
 signal tool_changed(data: StructureData, remove_mode: bool)
 signal restart_requested
 signal menu_requested
-## DEBUG (Milestone 2): start TestAssault. Replaced by the wave button in Milestone 4.
-signal assault_requested
+signal start_wave_requested
+signal pause_requested(paused: bool)
 
 const PANEL_WIDTH := 400.0
 const TOP_BAR_HEIGHT := 76.0
@@ -26,8 +28,19 @@ var _credits_label: Label
 var _base_label: Label
 var _phase_label: Label
 var _enemy_label: Label
-var _assault_button: Button
-var _defeat_overlay: Control
+var _wave_label: Label
+var _start_button: Button
+var _results_overlay: Control
+var _results_box: VBoxContainer
+var _banner: PanelContainer
+var _banner_title: Label
+var _banner_sub: Label
+var _banner_tween: Tween
+var _intel: PanelContainer
+var _intel_label: Label
+var _hit_flash: ColorRect
+var _top_style_calm: StyleBox
+var _top_style_alert: StyleBoxFlat
 var _info_label: Label
 var _feedback_label: Label
 var _build_buttons: Array[Button] = []
@@ -52,15 +65,24 @@ func setup(session: GameSession, structures: Array[StructureData]) -> void:
 	_button_group.allow_unpress = true
 	_build_top_bar()
 	_build_side_panel()
+	_build_feedback_layers()
 	_build_pause_overlay()
 	_session.wallet.credits_changed.connect(_on_credits_changed)
 	_session.phase_changed.connect(_on_phase_changed)
 	_session.base_hp_changed.connect(func(_hp: int, _max: int) -> void: _refresh_status())
+	_session.hq_damaged.connect(_on_hq_damaged)
+	_session.wave_started.connect(_on_wave_started)
+	_session.wave_completed.connect(_on_wave_completed)
+	_session.enemy_type_arrived.connect(_on_enemy_type_arrived)
+	_session.mission_ended.connect(_show_results)
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 	_refresh_status()
 	_refresh_affordability()
+	_refresh_intel()
 	_show_info(null, false)
+	show_banner(_session.level.display_name.to_upper(),
+			"%s  -  BUILD YOUR DEFENSES, THEN START WAVE 1" % _session.level.region.to_upper(), Palette.TACTICAL_GOLD, 4.0)
 
 
 func clear_selection() -> void:
@@ -83,31 +105,35 @@ func _build_top_bar() -> void:
 	_top_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_top_bar.custom_minimum_size.y = TOP_BAR_HEIGHT
 	add_child(_top_bar)
+	_top_style_calm = _top_bar.get_theme_stylebox("panel")
+	_top_style_alert = (_top_style_calm as StyleBoxFlat).duplicate() as StyleBoxFlat
+	_top_style_alert.border_color = Palette.ALERT_RED
+	_top_style_alert.border_width_bottom = 4
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 40)
+	row.add_theme_constant_override("separation", 34)
 	_top_bar.add_child(row)
 
 	_credits_label = UiTheme.label("", UiTheme.FONT_SIZE, Palette.TACTICAL_GOLD)
 	row.add_child(_credits_label)
 	_base_label = UiTheme.label("")
 	row.add_child(_base_label)
+	_wave_label = UiTheme.label("", UiTheme.FONT_SIZE, Palette.SANDSTONE)
+	row.add_child(_wave_label)
 	_phase_label = UiTheme.label("")
 	_phase_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_phase_label)
 	_enemy_label = UiTheme.label("", UiTheme.FONT_SIZE, Palette.ALERT_RED.lightened(0.15))
 	row.add_child(_enemy_label)
 
-	_assault_button = Button.new()
-	_assault_button.text = "TEST ASSAULT"
-	_assault_button.tooltip_text = "Debug: spawns a fixed enemy column (waves arrive in Milestone 4)."
-	_assault_button.custom_minimum_size = Vector2(230, 0)
-	_assault_button.pressed.connect(func() -> void: assault_requested.emit())
-	row.add_child(_assault_button)
+	_start_button = Button.new()
+	_start_button.custom_minimum_size = Vector2(250, 0)
+	_start_button.pressed.connect(func() -> void: start_wave_requested.emit())
+	row.add_child(_start_button)
 
 	var pause := Button.new()
 	pause.text = "II  PAUSE"
 	pause.custom_minimum_size = Vector2(170, 0)
-	pause.pressed.connect(_set_paused.bind(true))
+	pause.pressed.connect(func() -> void: pause_requested.emit(true))
 	row.add_child(pause)
 
 
@@ -186,12 +212,184 @@ func _build_side_panel() -> void:
 
 func _build_pause_overlay() -> void:
 	_pause_overlay = _make_overlay("PAUSED", Palette.SANDSTONE, [
-			["RESUME", _set_paused.bind(false)],
+			["RESUME", func() -> void: pause_requested.emit(false)],
 			["RESTART", func() -> void: restart_requested.emit()],
 			["MAIN MENU", func() -> void: menu_requested.emit()]])
-	_defeat_overlay = _make_overlay("HQ DESTROYED", Palette.ALERT_RED, [
-			["RESTART", func() -> void: restart_requested.emit()],
-			["MAIN MENU", func() -> void: menu_requested.emit()]])
+	# Results screen: content is filled in _show_results().
+	_results_overlay = ColorRect.new()
+	(_results_overlay as ColorRect).color = Color(Palette.OLIVE_BLACK, 0.9)
+	_results_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_results_overlay.visible = false
+	add_child(_results_overlay)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_results_overlay.add_child(center)
+	_results_box = VBoxContainer.new()
+	_results_box.add_theme_constant_override("separation", 14)
+	center.add_child(_results_box)
+
+
+## Banner strip under the top bar, intel strip at the bottom of the map and a
+## full-screen red flash for HQ hits. None of them take input.
+func _build_feedback_layers() -> void:
+	_hit_flash = ColorRect.new()
+	_hit_flash.color = Color(Palette.ALERT_RED, 0.0)
+	_hit_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hit_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hit_flash)
+	move_child(_hit_flash, 0)
+
+	_banner = PanelContainer.new()
+	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner.anchor_left = 0.0
+	_banner.anchor_right = 0.0
+	_banner.offset_top = TOP_BAR_HEIGHT + 14
+	_banner.modulate.a = 0.0
+	add_child(_banner)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner.add_child(col)
+	_banner_title = UiTheme.label("", 40, Palette.TACTICAL_GOLD)
+	_banner_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(_banner_title)
+	_banner_sub = UiTheme.label("", 22, Palette.SANDSTONE)
+	_banner_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(_banner_sub)
+
+	_intel = PanelContainer.new()
+	_intel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intel.anchor_top = 1.0
+	_intel.anchor_bottom = 1.0
+	_intel.modulate.a = 0.92
+	add_child(_intel)
+	_intel_label = UiTheme.label("", 20, Palette.SANDSTONE)
+	_intel.add_child(_intel_label)
+
+
+## Transient centred banner (wave start/complete, tank warning...).
+func show_banner(title: String, subtitle: String, color: Color, seconds: float = 2.5) -> void:
+	_banner_title.text = title
+	_banner_title.add_theme_color_override("font_color", color)
+	_banner_sub.text = subtitle
+	_banner_sub.visible = not subtitle.is_empty()
+	_banner.reset_size()
+	var area := map_area()
+	_banner.position.x = area.position.x + (area.size.x - _banner.get_combined_minimum_size().x) * 0.5
+	if _banner_tween != null:
+		_banner_tween.kill()
+	_banner.modulate.a = 1.0
+	_banner_tween = create_tween()
+	_banner_tween.tween_interval(seconds)
+	_banner_tween.tween_property(_banner, "modulate:a", 0.0, 0.6)
+
+
+func banner_text() -> String:
+	return _banner_title.text if _banner.modulate.a > 0.01 else ""
+
+
+## Insufficient credits: brief red pulse on the credits counter.
+func flash_credits() -> void:
+	_credits_label.add_theme_color_override("font_color", Palette.ALERT_RED)
+	var t := create_tween()
+	t.tween_interval(0.5)
+	t.tween_callback(func() -> void: _credits_label.add_theme_color_override("font_color", Palette.TACTICAL_GOLD))
+
+
+func _on_hq_damaged(amount: int, _enemy: Enemy) -> void:
+	_hit_flash.color.a = minf(0.35, 0.12 + 0.05 * amount)
+	var t := create_tween()
+	t.tween_property(_hit_flash, "color:a", 0.0, 0.45)
+	_base_label.add_theme_color_override("font_color", Palette.ALERT_RED)
+	var t2 := create_tween()
+	t2.tween_interval(0.6)
+	t2.tween_callback(func() -> void: _base_label.add_theme_color_override("font_color", Palette.SANDSTONE))
+
+
+func _on_wave_started(index: int, wave: WaveData) -> void:
+	show_banner("WAVE %d  -  %s" % [index + 1, wave.display_name.to_upper()],
+			"%d HOSTILES INBOUND" % wave.enemy_count(), Palette.ALERT_RED, 2.5)
+
+
+func _on_wave_completed(index: int, _wave: WaveData, bonus: int) -> void:
+	if _session.waves.is_last_wave():
+		return # the results screen takes over
+	show_banner("WAVE %d CLEARED" % (index + 1), "+%d CR BONUS  -  REBUILD AND PREPARE" % bonus, Palette.TACTICAL_GOLD, 3.0)
+
+
+func _on_enemy_type_arrived(_index: int, enemy_id: StringName) -> void:
+	if enemy_id == &"heavy_tank":
+		show_banner("ARMOR INBOUND", "HEAVY TANKS: BULLETS BARELY SCRATCH THEM - USE MISSILES", Palette.ALERT_RED, 3.0)
+
+
+## Composition of the next wave, shown while the player prepares.
+func _refresh_intel() -> void:
+	var wave := _session.waves.next_wave()
+	_intel.visible = wave != null and _session.is_build_phase()
+	if not _intel.visible:
+		return
+	var parts := PackedStringArray()
+	var comp := wave.composition()
+	for id in comp:
+		var data := EnemyCatalog.get_data(id)
+		parts.append("%d %s" % [comp[id], (data.display_name if data else String(id)).to_upper()])
+	var spawns := PackedStringArray()
+	for i in wave.spawn_indices(_session.level.spawn_cells.size()):
+		spawns.append(_session.level.spawn_name(i).to_upper())
+	var mods := ""
+	if wave.hp_multiplier != 1.0 or wave.speed_multiplier != 1.0:
+		mods = "   HP x%.2f  SPEED x%.2f" % [wave.hp_multiplier, wave.speed_multiplier]
+	_intel_label.text = "INTEL  WAVE %d - %s:  %s   FROM %s%s" % [_session.wave_number() + 1,
+			wave.display_name.to_upper(), ", ".join(parts), " + ".join(spawns), mods]
+	var area := map_area()
+	_intel.reset_size()
+	_intel.offset_left = area.position.x + 16
+	_intel.offset_right = _intel.offset_left + _intel.get_combined_minimum_size().x
+	_intel.offset_top = -_intel.get_combined_minimum_size().y - 16
+	_intel.offset_bottom = -16
+
+
+func _show_results(victory: bool) -> void:
+	for c in _results_box.get_children():
+		c.queue_free()
+	var s := _session
+	var title := UiTheme.label("MISSION COMPLETE" if victory else "MISSION FAILED", 72,
+			Palette.TACTICAL_GOLD if victory else Palette.ALERT_RED)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results_box.add_child(title)
+	var sub := UiTheme.label(s.level.display_name.to_upper(), 26, Palette.SANDSTONE)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results_box.add_child(sub)
+	var rows: Array = [
+		["WAVES SURVIVED" if victory else "WAVE REACHED",
+				"%d / %d" % [s.stats.waves_completed if victory else s.wave_number(), s.waves.wave_count()]],
+		["ENEMIES DESTROYED", str(s.stats.kills)],
+		["HQ INTEGRITY", "%d / %d" % [s.base_hp, s.level.base_max_hp]],
+		["CREDITS REMAINING", str(s.wallet.get_credits())],
+		["MISSION SCORE", str(s.score())],
+	]
+	if victory:
+		rows.append(["RATING", "%d / 3 STARS" % MissionScore.stars(s)])
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 60)
+	for r in rows:
+		grid.add_child(UiTheme.label(r[0], 28, Palette.SANDSTONE.darkened(0.15)))
+		var v := UiTheme.label(r[1], 28, Palette.TACTICAL_GOLD)
+		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(v)
+	_results_box.add_child(grid)
+	for entry in [["RESTART MISSION", func() -> void: restart_requested.emit()],
+			["MAIN MENU", func() -> void: menu_requested.emit()]]:
+		var b := Button.new()
+		b.text = entry[0]
+		b.custom_minimum_size = Vector2(460, UiTheme.TOUCH_MIN_HEIGHT)
+		b.pressed.connect(entry[1])
+		_results_box.add_child(b)
+	_results_overlay.visible = true
+
+
+func results_visible() -> bool:
+	return _results_overlay.visible
 
 
 func _make_overlay(title_text: String, title_color: Color, entries: Array) -> Control:
@@ -228,20 +426,15 @@ func set_enemy_status(alive: int, queued: int) -> void:
 func _on_phase_changed(phase: int) -> void:
 	_refresh_status()
 	_refresh_affordability()
-	_assault_button.disabled = phase != GameSession.Phase.BUILD
-	if phase == GameSession.Phase.DEFEAT:
-		_defeat_overlay.visible = true
+	_refresh_intel()
+	_pause_overlay.visible = phase == GameSession.Phase.PAUSED
 
 
 # --- Behaviour ---------------------------------------------------------------
 
+## Android back / Esc while no tool is active.
 func toggle_pause() -> void:
-	_set_paused(not get_tree().paused)
-
-
-func _set_paused(paused: bool) -> void:
-	get_tree().paused = paused
-	_pause_overlay.visible = paused
+	pause_requested.emit(_session.phase != GameSession.Phase.PAUSED)
 
 
 func _on_build_toggled(pressed: bool, data: StructureData) -> void:
@@ -308,15 +501,38 @@ func _on_credits_changed(_credits: int, _delta: int) -> void:
 
 
 func _refresh_status() -> void:
-	_credits_label.text = "CREDITS  %d" % _session.wallet.get_credits()
-	_base_label.text = "HQ  %d / %d" % [_session.base_hp, _session.level.base_max_hp]
-	match _session.phase:
-		GameSession.Phase.DEFEAT:
-			_phase_label.text = "MISSION FAILED"
+	var s := _session
+	_credits_label.text = "CREDITS  %d" % s.wallet.get_credits()
+	_base_label.text = "HQ  %d / %d" % [s.base_hp, s.level.base_max_hp]
+	_wave_label.text = "WAVE  %d / %d" % [s.wave_number(), s.waves.wave_count()]
+	var text := ""
+	var color := Palette.SANDSTONE
+	match s.phase:
+		GameSession.Phase.PREPARATION:
+			text = "PREPARE DEFENSES"
+			color = Palette.VALID
+		GameSession.Phase.WAVE_ACTIVE:
+			var wave := s.waves.current_wave()
+			text = "UNDER ATTACK" + (" - %s" % wave.display_name.to_upper() if wave else "")
+			color = Palette.ALERT_RED
+		GameSession.Phase.WAVE_COMPLETED:
+			text = "WAVE CLEARED"
+			color = Palette.TACTICAL_GOLD
+		GameSession.Phase.PAUSED:
+			text = "PAUSED"
 		GameSession.Phase.VICTORY:
-			_phase_label.text = "MISSION COMPLETE"
-		_:
-			_phase_label.text = "%s PHASE" % GameSession.Phase.keys()[_session.phase]
+			text = "MISSION COMPLETE"
+			color = Palette.TACTICAL_GOLD
+		GameSession.Phase.DEFEAT:
+			text = "MISSION FAILED"
+			color = Palette.ALERT_RED
+	_phase_label.text = text
+	_phase_label.add_theme_color_override("font_color", color)
+	_top_bar.add_theme_stylebox_override("panel",
+			_top_style_alert if s.phase == GameSession.Phase.WAVE_ACTIVE else _top_style_calm)
+	var next := s.wave_number() + 1
+	_start_button.text = "START WAVE %d" % next if s.waves.has_next_wave() else "FINAL WAVE"
+	_start_button.disabled = not s.is_build_phase() or not s.waves.has_next_wave()
 
 
 ## Button labels show the price right now (with combat surcharge) and dim

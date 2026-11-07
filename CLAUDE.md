@@ -10,11 +10,11 @@ todas las rutas. Detalle: `docs/GAME_DESIGN.md`.
 
 ## Estado del proyecto (actualiza esta sección al cerrar cada sesión)
 
-- Hitos 0–3 ✅ en escritorio con Godot 4.7.2 (sesión 4): 96/96 pruebas, recorridos visuales 14/14, 15/15 y 20/20,
-  benchmarks de enemigos y combate. Pendiente: Android real (Hito 5).
-- Construcción en combate **confirmada** con recargo del 25 % (D-015).
-- Siguiente: Hito 4 (oleadas y progresión) — solo cuando el usuario lo pida. Ver `docs/ROADMAP.md`.
-- Pendientes y riesgos: `docs/ROADMAP.md`.
+- Hitos 0–4 ✅ en escritorio con Godot 4.7.2 (sesión 5): 126/126 pruebas, 4 recorridos visuales (incluida una
+  partida completa menú → victoria → reinicio → derrota → menú), simulación de equilibrio, benchmarks.
+- OPERATION FIRST ASSAULT jugable de principio a fin. Equilibrio validado solo con un jugador scripted.
+- Pendiente: Android real, sonido verificado de oído, equilibrio con personas.
+- Siguiente: Hito 5 (experiencia móvil) — solo cuando el usuario lo pida. Ver `docs/ROADMAP.md`.
 
 ## Comandos
 
@@ -25,9 +25,11 @@ godot --headless --path . --quit-after 300                    # smoke de arranqu
 godot --path .                                                # jugar
 # Recorrido E2E con render + capturas (Linux sin pantalla: Xvfb)
 IR_SHOTS_DIR=/tmp/shots xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --resolution 1920x1080 \
-  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd     # y drive_enemies.gd, drive_combat.gd
-godot --headless --path . --script res://tests/perf/bench_enemies.gd          # benchmarks (y bench_combat.gd;
+  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd     # y drive_enemies/combat/mission.gd
+godot --headless --path . --script res://tests/perf/bench_enemies.gd          # benchmarks (y bench_combat/mission.gd;
                                                                               # añade -- --render con Xvfb)
+godot --headless --path . --script res://tests/sim/sim_mission.gd             # equilibrio: estrategias A/A2/B/C/D
+                                                                              # (-- --maps --verbose para detalle)
 ```
 
 Verificados el 2026-11-07 con Godot 4.7.2-stable (todos exit 0). En un contenedor cloud Godot no está
@@ -49,6 +51,10 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
 - Combate: `CombatSystem` (RefCounted) sigue torretas por señales del grid; todo daño pasa por
   `EnemyRoster.damage(enemy, amount, type)` (tabla `Damage`); nunca toques `hp` ni créditos desde otro sitio.
   Proyectiles deterministas guiados, sin físicas; búsqueda de objetivo ≤ 10 Hz por torreta (D-017).
+- Misión: `GameSession` es la máquina de estados (D-018). Cambia de estado solo con `start_wave()`, `pause()`,
+  `resume()` o `set_phase()` (validado contra `TRANSITIONS`). Oleadas = datos en el JSON (`WaveData`) ejecutados por
+  `WaveManager` con calendario determinista (D-019). Nada genera enemigos fuera de `WAVE_ACTIVE`.
+- Economía: recompensas solo en `GameSession` (baja una vez; HQ nunca paga); `MissionStats` es el libro (D-020).
 - Datos: niveles en `data/levels/*.json` (layout ASCII), estructuras en `data/structures/*.tres` registradas en
   `StructureCatalog.PATHS`.
 
@@ -73,6 +79,11 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
   Si algo corre GDScript en `_draw()` cada frame, mídelo también (no lo atribuyas al rasterizador).
 - `:=` no infiere tipos desde `Variant` (elementos de `Array`/`Dictionary` sin tipo): declara el tipo explícito.
 - Suites de prueba ≤ 20 métodos públicos (gdlint): divide por tema con una base común (`combat_test_base.gd`).
+- Si cambias datos de misión/enemigos, ejecuta `tests/sim/sim_mission.gd` y anota el resultado en TESTING.md;
+  `test_mission_flow` falla si C o B dejan de ganar o D deja de perder.
+- No escribas valores de datos (créditos, vidas) a mano en pruebas/drivers: léelos de `LevelData`/`EnemyData`.
+- Un script `extends SceneTree` que hace `quit()` con la batalla cargada y un sonido sonando da un aviso de
+  "ObjectDB leaked at exit" (artefacto del apagado de audio, sin fuga real): vuelve al menú antes de `quit()`.
 
 ## Reglas para añadir sistemas
 

@@ -1,17 +1,169 @@
 {
 	"format_version": 1,
 	"id": "w1_m01",
-	"name": "Dust Frontier - Outpost Kilo",
+	"name": "Operation First Assault",
+	"mission": {
+		"region": "Dust Frontier",
+		"theme": "desert",
+		"briefing": "Forward Outpost Kilo guards the only supply road across the Dust Frontier. Hostile columns are moving in from the west road and the northern pass. Hold the HQ through five assault waves.",
+		"spawn_names": [
+			"north",
+			"west"
+		],
+		"debrief_seconds": 3.0
+	},
+	"victory": {
+		"type": "survive_all_waves"
+	},
 	"cell_size": 64,
-	"starting_credits": 300,
+	"starting_credits": 350,
 	"base_max_hp": 20,
-	"movement_classes": ["infantry", "wheeled", "tracked"],
-	"available_structures": ["sandbags", "concrete_wall", "antitank_barrier", "turret_hmg", "turret_missile", "turret_aa"],
+	"movement_classes": [
+		"infantry",
+		"wheeled",
+		"tracked"
+	],
+	"available_structures": [
+		"sandbags",
+		"concrete_wall",
+		"antitank_barrier",
+		"turret_hmg",
+		"turret_missile",
+		"turret_aa"
+	],
 	"rules": {
 		"allow_build_during_combat": true,
 		"combat_build_surcharge": 0.25,
 		"allow_remove_during_combat": false
 	},
+	"waves": [
+		{
+			"id": "w1",
+			"name": "First Contact",
+			"reward": 60,
+			"groups": [
+				{
+					"enemy": "infantry",
+					"count": 8,
+					"start": 0,
+					"interval": 1.6,
+					"spawn": "west"
+				}
+			]
+		},
+		{
+			"id": "w2",
+			"name": "Fast Approach",
+			"reward": 70,
+			"groups": [
+				{
+					"enemy": "infantry",
+					"count": 10,
+					"start": 0,
+					"interval": 1.2,
+					"spawn": "alternate"
+				},
+				{
+					"enemy": "light_vehicle",
+					"count": 3,
+					"start": 8,
+					"interval": 2.5,
+					"spawn": "north"
+				}
+			]
+		},
+		{
+			"id": "w3",
+			"name": "Armored Threat",
+			"reward": 90,
+			"groups": [
+				{
+					"enemy": "infantry",
+					"count": 8,
+					"start": 0,
+					"interval": 1.2,
+					"spawn": "west"
+				},
+				{
+					"enemy": "light_vehicle",
+					"count": 5,
+					"start": 4,
+					"interval": 2.0,
+					"spawn": "north"
+				},
+				{
+					"enemy": "heavy_tank",
+					"count": 1,
+					"start": 14,
+					"interval": 1.0,
+					"spawn": "west"
+				}
+			]
+		},
+		{
+			"id": "w4",
+			"name": "Breaking Point",
+			"reward": 110,
+			"modifiers": {
+				"hp": 1.1
+			},
+			"groups": [
+				{
+					"enemy": "infantry",
+					"count": 12,
+					"start": 0,
+					"interval": 1.0,
+					"spawn": "alternate"
+				},
+				{
+					"enemy": "light_vehicle",
+					"count": 6,
+					"start": 5,
+					"interval": 1.6,
+					"spawn": "alternate"
+				},
+				{
+					"enemy": "heavy_tank",
+					"count": 3,
+					"start": 12,
+					"interval": 7.0,
+					"spawn": "alternate"
+				}
+			]
+		},
+		{
+			"id": "w5",
+			"name": "Iron Assault",
+			"reward": 0,
+			"modifiers": {
+				"hp": 1.25,
+				"speed": 1.05
+			},
+			"groups": [
+				{
+					"enemy": "infantry",
+					"count": 18,
+					"start": 0,
+					"interval": 0.7,
+					"spawn": "alternate"
+				},
+				{
+					"enemy": "light_vehicle",
+					"count": 9,
+					"start": 4,
+					"interval": 1.3,
+					"spawn": "alternate"
+				},
+				{
+					"enemy": "heavy_tank",
+					"count": 6,
+					"start": 6,
+					"interval": 3.5,
+					"spawn": "alternate"
+				}
+			]
+		}
+	],
 	"layout": [
 		"...........S............",
 		"...........~....##......",

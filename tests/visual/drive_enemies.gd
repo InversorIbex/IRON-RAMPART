@@ -6,6 +6,8 @@ extends SceneTree
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --resolution 1920x1080 \
 ##       --rendering-driver opengl3 --script res://tests/visual/drive_enemies.gd
 
+const WATCHDOG_SECONDS := 600.0
+
 var out_dir: String
 var battle: Node
 var ok := true
@@ -17,6 +19,11 @@ func _initialize() -> void:
 		out_dir = ProjectSettings.globalize_path("user://shots")
 	out_dir = out_dir.trim_suffix("/") + "/"
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# Watchdog: if the driver coroutine dies on a script error it never reaches
+	# quit(); fail loudly instead of hanging (real-time, ignores time_scale).
+	create_timer(WATCHDOG_SECONDS, true, false, true).timeout.connect(func() -> void:
+		print("DRIVER RESULT: WATCHDOG TIMEOUT (script error or hang)")
+		quit(2))
 	_main.call_deferred()
 
 
@@ -29,9 +36,9 @@ func _main() -> void:
 	var layer: EnemyLayer = battle.enemy_layer
 
 	# --- Assault ---------------------------------------------------------------
-	_click(_find_button(hud, "TEST ASSAULT").get_global_rect().get_center())
+	_click(_find_button(hud, "START WAVE").get_global_rect().get_center())
 	await _frames(2)
-	_check(s.phase == GameSession.Phase.COMBAT, "TEST ASSAULT -> COMBAT phase")
+	_check(s.phase == GameSession.Phase.WAVE_ACTIVE, "START WAVE -> WAVE_ACTIVE")
 	Engine.time_scale = 3.0
 	await _seconds(4.0)
 	Engine.time_scale = 1.0
@@ -114,19 +121,19 @@ func _main() -> void:
 	var hp0 := s.base_hp
 	Engine.time_scale = 4.0
 	var waited := 0.0
-	while (battle.assault != null or s.enemies.count() > 0) and waited < 90.0 and not s.is_over():
+	while s.phase == GameSession.Phase.WAVE_ACTIVE and waited < 90.0:
 		await _seconds(1.0)
 		waited += 1.0
 	Engine.time_scale = 1.0
 	await _frames(30) # exit tweens
 	_check(s.enemies.count() == 0, "assault finished (%.0f s scaled)" % waited)
 	_check(s.base_hp < hp0 and not s.is_over(), "HQ damaged but alive (%d -> %d)" % [hp0, s.base_hp])
-	_check(s.phase == GameSession.Phase.BUILD, "back to BUILD after the assault")
+	_check(s.is_build_phase(), "back to a build phase after the wave (%s)" % GameSession.Phase.keys()[s.phase])
 	_check(layer.view_count() == 0 and layer.get_child_count() == 0, "no leftover enemy views")
 	await _shot("13_after_assault")
 
 	# --- Defeat -------------------------------------------------------------------
-	s.set_phase(GameSession.Phase.COMBAT)
+	_check(s.start_wave(), "wave 2 started")
 	for i in 8:
 		s.enemies.spawn(EnemyCatalog.get_data(&"heavy_tank"), s.level.spawn_cells[i % 2])
 	Engine.time_scale = 6.0
@@ -136,9 +143,12 @@ func _main() -> void:
 		waited += 1.0
 	Engine.time_scale = 1.0
 	await _frames(5)
-	_check(s.phase == GameSession.Phase.DEFEAT and hud._defeat_overlay.visible, "defeat screen shown")
+	_check(s.phase == GameSession.Phase.DEFEAT and hud.results_visible(), "defeat screen shown")
 	await _shot("14_defeat")
 
+	# Leave the battle before quitting (audio playbacks at shutdown, see CLAUDE.md).
+	change_scene_to_file("res://scenes/menus/main_menu.tscn")
+	await _frames(10)
 	print("DRIVER RESULT: ", "OK" if ok else "FAILED")
 	quit(0 if ok else 1)
 

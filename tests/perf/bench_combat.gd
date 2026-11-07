@@ -53,7 +53,7 @@ func _setup(s: GameSession, turrets: int) -> int:
 			break
 		if s.construction.build(StructureCatalog.load_structure(WEAPONS[placed % 3]), c).is_ok():
 			placed += 1
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	_s = s
 	s.enemies.enemy_reached_base.connect(_respawn)
 	s.enemies.enemy_killed.connect(_respawn)

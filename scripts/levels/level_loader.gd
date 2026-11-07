@@ -6,6 +6,8 @@ extends RefCounted
 ## Format reference: docs/GAME_DESIGN.md#formato-de-niveles.
 
 const SUPPORTED_FORMAT_VERSION := 1
+const THEMES := ["desert"]
+const VICTORY_TYPES := ["survive_all_waves"]
 
 ## Tests that deliberately feed bad data set this to false to keep logs clean.
 static var report_errors: bool = true
@@ -98,6 +100,10 @@ static func parse_dict(d: Dictionary, source: String = "<memory>") -> Result:
 	# --- Layout ---
 	_parse_layout(d.get("layout"), level, errors)
 
+	# --- Mission identity + waves (need the spawn count from the layout) ---
+	_parse_mission(d, level, errors)
+	_parse_waves(d.get("waves", []), level, errors)
+
 	# --- Connectivity (only meaningful if the layout itself is valid) ---
 	if errors.is_empty():
 		var grid := GridModel.new(level)
@@ -116,6 +122,117 @@ static func parse_dict(d: Dictionary, source: String = "<memory>") -> Result:
 		return result
 	result.level = level
 	return result
+
+
+static func _parse_mission(d: Dictionary, level: LevelData, errors: Array[String]) -> void:
+	var m: Variant = d.get("mission", {})
+	if typeof(m) != TYPE_DICTIONARY:
+		errors.append("'mission' must be an object")
+		return
+	level.region = str(m.get("region", ""))
+	level.briefing = str(m.get("briefing", ""))
+	level.theme = str(m.get("theme", "desert"))
+	if not THEMES.has(level.theme):
+		errors.append("unknown mission theme '%s' (known: %s)" % [level.theme, ", ".join(THEMES)])
+	var names: Variant = m.get("spawn_names", [])
+	if typeof(names) != TYPE_ARRAY:
+		errors.append("'mission.spawn_names' must be an array")
+	else:
+		var list := PackedStringArray()
+		for n in names:
+			list.append(str(n))
+		if not list.is_empty() and list.size() != level.spawn_cells.size():
+			errors.append("'mission.spawn_names' has %d names but the layout has %d spawns"
+					% [list.size(), level.spawn_cells.size()])
+		level.spawn_names = list
+	var debrief: Variant = m.get("debrief_seconds", 3.0)
+	if not _is_number(debrief) or float(debrief) < 0.0 or float(debrief) > 60.0:
+		errors.append("'mission.debrief_seconds' must be a number in [0, 60]")
+	else:
+		level.debrief_seconds = float(debrief)
+	var victory: Variant = d.get("victory", {"type": "survive_all_waves"})
+	if typeof(victory) != TYPE_DICTIONARY or not VICTORY_TYPES.has(str(victory.get("type", ""))):
+		errors.append("'victory.type' must be one of: %s" % ", ".join(VICTORY_TYPES))
+	else:
+		level.victory_type = str(victory["type"])
+
+
+static func _parse_waves(raw: Variant, level: LevelData, errors: Array[String]) -> void:
+	if typeof(raw) != TYPE_ARRAY:
+		errors.append("'waves' must be an array")
+		return
+	var ids := {}
+	for wi in (raw as Array).size():
+		var w: Variant = raw[wi]
+		var where := "wave %d" % (wi + 1)
+		if typeof(w) != TYPE_DICTIONARY:
+			errors.append("%s must be an object" % where)
+			continue
+		var wave := WaveData.new()
+		wave.id = str(w.get("id", ""))
+		if wave.id.is_empty() or ids.has(wave.id):
+			errors.append("%s needs a unique 'id'" % where)
+		ids[wave.id] = true
+		where = "wave '%s'" % wave.id
+		wave.display_name = str(w.get("name", wave.id))
+		wave.reward = _read_int(w, "reward", 0, 0, 100000, errors)
+		var mods: Variant = w.get("modifiers", {})
+		if typeof(mods) != TYPE_DICTIONARY:
+			errors.append("%s: 'modifiers' must be an object" % where)
+		else:
+			wave.hp_multiplier = _read_float(mods, "hp", 1.0, 0.1, 10.0, where, errors)
+			wave.speed_multiplier = _read_float(mods, "speed", 1.0, 0.1, 5.0, where, errors)
+		wave.completion = str(w.get("completion", WaveData.COMPLETE_ALL_CLEARED))
+		if wave.completion != WaveData.COMPLETE_ALL_CLEARED:
+			errors.append("%s: unknown completion '%s'" % [where, wave.completion])
+		var groups: Variant = w.get("groups")
+		if typeof(groups) != TYPE_ARRAY or (groups as Array).is_empty():
+			errors.append("%s needs a non-empty 'groups' array" % where)
+			continue
+		for gi in (groups as Array).size():
+			var g: Variant = groups[gi]
+			var gwhere := "%s group %d" % [where, gi + 1]
+			if typeof(g) != TYPE_DICTIONARY:
+				errors.append("%s must be an object" % gwhere)
+				continue
+			var group := WaveData.Group.new()
+			group.enemy_id = StringName(str(g.get("enemy", "")))
+			if not EnemyCatalog.has_id(group.enemy_id):
+				errors.append("%s: unknown enemy '%s'" % [gwhere, group.enemy_id])
+			group.count = _read_int(g, "count", 0, 1, 1000, errors)
+			if not g.has("count"):
+				errors.append("%s: missing 'count'" % gwhere)
+			group.start = _read_float(g, "start", 0.0, 0.0, 3600.0, gwhere, errors)
+			group.interval = _read_float(g, "interval", 1.0, 0.05, 120.0, gwhere, errors)
+			group.spawn = _parse_spawn(g.get("spawn", "alternate"), level, gwhere, errors)
+			wave.groups.append(group)
+		level.waves.append(wave)
+
+
+static func _parse_spawn(v: Variant, level: LevelData, where: String, errors: Array[String]) -> int:
+	if typeof(v) == TYPE_STRING:
+		if v == "alternate":
+			return WaveData.ALTERNATE
+		var i := level.spawn_names.find(v)
+		if i < 0:
+			errors.append("%s: unknown spawn '%s' (names: %s)" % [where, v, ", ".join(level.spawn_names)])
+			return 0
+		return i
+	if _is_number(v) and int(v) >= 0 and int(v) < level.spawn_cells.size() and float(v) == floor(float(v)):
+		return int(v)
+	errors.append("%s: 'spawn' must be a spawn name, an index < %d, or \"alternate\"" % [where, level.spawn_cells.size()])
+	return 0
+
+
+static func _read_float(d: Dictionary, key: String, default: float, min_v: float, max_v: float,
+		where: String, errors: Array[String]) -> float:
+	if not d.has(key):
+		return default
+	var v: Variant = d[key]
+	if not _is_number(v) or float(v) < min_v or float(v) > max_v:
+		errors.append("%s: '%s' must be a number in [%s, %s] (got %s)" % [where, key, min_v, max_v, v])
+		return default
+	return float(v)
 
 
 static func _parse_layout(layout: Variant, level: LevelData, errors: Array[String]) -> void:

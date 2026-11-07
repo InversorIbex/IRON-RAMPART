@@ -192,3 +192,56 @@ El renderizador elegido (GL Compatibility, D-002) usa OpenGL ES 3.0, disponible 
   repartir picos. El seguimiento y el disparo al objetivo actual siguen siendo por frame.
 - **Resultado medido:** 0,13 ms/tick (−80 %), pico 2,8 → 0,46 ms, mismas bajas en 10 s (92). Determinista.
 
+## D-018 — Máquina de estados de misión en `GameSession` (Hito 4)
+
+- **Estados:** `PREPARATION`, `WAVE_ACTIVE`, `WAVE_COMPLETED`, `VICTORY`, `DEFEAT`, `PAUSED`. Tabla `TRANSITIONS`
+  explícita; `_transition()` rechaza todo lo demás (devuelve `false` y no cambia nada). `VICTORY`/`DEFEAT` son finales.
+- **Por qué en `GameSession` y no un autoload/nodo:** el estado de misión es estado de partida; vive y muere con la
+  sesión (reinicio = sesión nueva, D-008) y se prueba sin escena. Antes la pausa vivía solo en el `SceneTree` del HUD
+  y el paso combate→construcción en el nodo `Battle` (lógica de juego en una escena).
+- **Pausa:** `pause()` guarda el estado anterior y `resume()` vuelve exactamente a él. `tick()` no hace nada en
+  `PAUSED`; además `Battle` pausa el árbol para congelar tweens/efectos. La sesión es la autoridad.
+- **`WAVE_COMPLETED`:** resumen de oleada (bono, banner) con construcción sin recargo; pasa sola a `PREPARATION`
+  tras `debrief_seconds` (dato de misión), o directamente a `WAVE_ACTIVE` si el jugador pulsa START WAVE.
+  `PREPARATION` no tiene límite de tiempo.
+- **Derrota desde cualquier estado activo:** si el HQ llega a 0 la misión se pierde aunque no sea `WAVE_ACTIVE`
+  (en juego normal solo ocurre en combate). Al terminar: proyectiles vaciados y nada más se simula.
+
+## D-019 — Oleadas por datos con calendario determinista
+
+- `WaveData` (grupos: enemigo, cantidad, inicio, intervalo, spawn por nombre/índice/`alternate`; modificadores de
+  vida/velocidad; recompensa; condición de fin) en el JSON de misión, validado por `LevelLoader`.
+- `WaveManager` genera un **calendario** ordenado (tiempo, grupo, unidad) al iniciar la oleada y lo consume con el
+  reloj de la oleada: mismo dato ⇒ mismo orden y tiempos. No muta `WaveData` (la misión se puede rejugar).
+- Fin de oleada = todo el calendario generado **y** ningún enemigo vivo (muertos o llegados al HQ).
+- Modificadores por unidad (`Enemy.max_hp`, `Enemy.speed`); `EnemyData` compartido nunca se modifica.
+- Sustituye a `TestAssault` (andamiaje del Hito 2, eliminado).
+
+## D-020 — Economía y puntuación
+
+- Ingresos: presupuesto inicial + recompensa por baja (una vez, en `GameSession._on_enemy_killed`) + bono por oleada
+  completada (una vez, en `_complete_wave`). Llegar al HQ no paga nada. Gastos: precio de `price_of()` (recargo en
+  combate). Reembolso al retirar: coste base × `refund_ratio`.
+- `MissionStats` lleva el libro: bajas por tipo, créditos por bajas/oleadas, gastado, reembolsado, daño al HQ, fugas.
+  Una prueba comprueba que el libro cuadra: `créditos = inicial + bajas + bonos − gastado + reembolsado`.
+- **Puntuación** (`MissionScore`): `500 × oleadas completadas + 10 × bajas + 150 × HQ restante + 1 × créditos +
+  1000 si victoria`. Estrellas: 3 = victoria sin daño, 2 = victoria con ≥ 50 % HQ, 1 = victoria, 0 = derrota.
+  Simple y transparente; premia sobre todo proteger el HQ. Se revisará con la campaña.
+
+## D-021 — Equilibrio por simulación con un jugador scripted
+
+- `tests/sim/strategy_bot.gd` juega la misión real (mismas reglas, precios y oleadas) con estrategias A/A2/B/C/D;
+  `tests/sim/sim_mission.gd` imprime la comparación; `test_mission_flow` fija como regresión que C y B ganan y D pierde.
+- Iteraciones documentadas en TESTING.md (sesión 5). Cambios de datos resultantes: presupuesto 300 → **350**,
+  vehículo ligero 140 → **110 HP** y recompensa 12 → **10**, tanque recompensa 40 → **30**, bonos 60/70/90/110,
+  oleada 4 con tanques espaciados, oleada 5 con 6 tanques y +25 % de vida.
+- **Limitación:** el bot no construye en combate, no retira, no reacciona dentro de la oleada y usa casillas fijas.
+  Es una referencia mínima de "jugador competente", no un sustituto de pruebas con personas (Hito 6).
+
+## D-022 — Sonido provisional sintetizado
+
+- No hay recursos de audio: `Sfx` genera señales cortas (PCM 16 bit) para inicio de oleada, aviso de blindados, daño
+  al HQ, baja (limitado a 12/s), oleada completada, victoria, derrota y construcción denegada.
+- **No verificado de oído:** el contenedor no tiene tarjeta de sonido (driver de audio dummy). Verificado solo que se
+  generan y reproducen sin errores. Sustituir por audio diseñado en el pase de arte.
+

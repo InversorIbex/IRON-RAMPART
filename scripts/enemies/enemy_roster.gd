@@ -37,9 +37,10 @@ func count() -> int:
 	return _enemies.size()
 
 
-func spawn(data: EnemyData, spawn_cell: Vector2i) -> Enemy:
+func spawn(data: EnemyData, spawn_cell: Vector2i,
+		hp_multiplier: float = 1.0, speed_multiplier: float = 1.0) -> Enemy:
 	assert(data != null, "spawn() needs EnemyData")
-	var enemy := Enemy.new(_next_id, data, spawn_cell)
+	var enemy := Enemy.new(_next_id, data, spawn_cell, hp_multiplier, speed_multiplier)
 	_next_id += 1
 	enemy.position = _grid.cell_to_local(spawn_cell)
 	_choose_next(enemy)
@@ -68,7 +69,7 @@ func update(delta: float) -> void:
 		enemy.age += delta
 		if enemy.state != Enemy.State.MOVING:
 			continue
-		enemy.progress += enemy.data.speed * delta
+		enemy.progress += enemy.speed * delta
 		while enemy.progress >= 1.0 and enemy.state == Enemy.State.MOVING:
 			enemy.progress -= 1.0
 			enemy.cell = enemy.next_cell

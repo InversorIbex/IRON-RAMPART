@@ -5,11 +5,11 @@
 Military Maze Tower Defense para Android (2D cenital, horizontal, offline, single-player).
 El jugador no defiende rutas fijas: **construye el laberinto** que siguen los enemigos.
 
-**Estado:** Hitos 0–3 completados y verificados en escritorio con Godot 4.7.2: laberintos con validación de rutas,
-tres tipos de enemigo con navegación compartida, y combate con tres torretas (ametralladora, lanzamisiles, antiaérea),
-proyectiles, daño por tipo y blindaje, recompensas y efectos. Se puede construir durante el combate con un recargo
-del 25 %. 96/96 pruebas, recorridos de juego con render 49/49. Falta probar en un dispositivo Android. Aún no hay
-oleadas ni victoria (Hito 4). Gráficos: placeholders. Detalle en [docs/TESTING.md](docs/TESTING.md).
+**Estado:** Hitos 0–4 completados y verificados en escritorio con Godot 4.7.2. **OPERATION FIRST ASSAULT** es
+jugable de principio a fin: preparar la defensa, cinco oleadas, economía de créditos, victoria o derrota con pantalla
+de resultados y reinicio. 126/126 pruebas, una partida completa verificada con input simulado y render, simulación de
+equilibrio con cinco estrategias. Falta probar en un dispositivo Android. Gráficos y sonido: provisionales.
+Detalle en [docs/TESTING.md](docs/TESTING.md).
 
 ![Combate](docs/screenshots/firefight.png)
 
@@ -52,7 +52,8 @@ Controles (ratón equivale a toque):
 - `REMOVE`: primer toque selecciona, segundo toque confirma (muestra el reembolso antes).
 - Clic derecho / `Esc` / botón Atrás de Android: cancelar herramienta.
 - Cámara: pellizco o rueda = zoom; dos dedos, botón central o arrastrar sin herramienta = desplazar.
-- `TEST ASSAULT` (depuración): lanza una columna de 10 enemigos para ver el movimiento y la reacción al laberinto.
+- `START WAVE N`: lanza la siguiente oleada (no hay límite de tiempo para prepararse). El panel INTEL muestra qué viene.
+- `PAUSE`: congela la batalla y conserva el estado.
 - Sin herramienta, tocar una torreta muestra su alcance y estadísticas. En combate, construir cuesta +25 % (se
   muestra en el botón y sobre la previsualización).
 - Las líneas de colores muestran la ruta actual de cada clase de movimiento

@@ -10,7 +10,7 @@ const R := ConstructionService.Reason
 
 func _combat_session(credits: int = 1000, rules: Dictionary = {}) -> GameSession:
 	var s := H.make_session(H.OPEN_LAYOUT, credits, rules)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	return s
 
 
@@ -58,7 +58,7 @@ func test_invalid_surcharge_rule_is_rejected_by_loader() -> void:
 
 func test_surcharge_returns_to_zero_after_combat() -> void:
 	var s := _combat_session()
-	s.set_phase(GameSession.Phase.BUILD)
+	s.set_phase(GameSession.Phase.WAVE_COMPLETED) # back to a build phase
 	assert_eq(s.construction.price_of(H.wall(25)), 25)
 
 
@@ -75,7 +75,7 @@ func test_rejected_for_surcharge_costs_nothing() -> void:
 
 func test_rejected_route_block_in_combat_costs_nothing() -> void:
 	var s := H.make_session(H.CHOKE_LAYOUT, 100)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	var check := s.construction.build(H.wall(25), Vector2i(3, 2))
 	assert_eq(check.reason, R.BLOCKS_ROUTE, "the base can never be sealed")
 	assert_eq(s.wallet.get_credits(), 100)
@@ -94,7 +94,7 @@ func test_combat_build_on_enemy_rejected_without_charge() -> void:
 func test_combat_build_that_traps_enemy_rejected_without_charge() -> void:
 	var pocket := ["S.......", "####.###", ".......B"]
 	var s := H.make_session(pocket, 100)
-	s.set_phase(GameSession.Phase.COMBAT)
+	s.set_phase(GameSession.Phase.WAVE_ACTIVE)
 	s.enemies.spawn(EnemyCatalog.get_data(&"infantry"), Vector2i(1, 2))
 	var check := s.construction.build(H.wall(25), Vector2i(3, 2))
 	assert_eq(check.reason, R.BLOCKS_ROUTE)

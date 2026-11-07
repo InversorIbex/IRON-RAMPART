@@ -9,7 +9,7 @@ las escenas solo renderizan y traducen input.**
 project.godot            Configuración (1920x1080 lógico, GL Compatibility, landscape)
 assets/                  Arte y audio finales (vacío: aún solo placeholders procedurales)
 data/
-  levels/*.json          Misiones (layout ASCII + parámetros + reglas)  -> LevelLoader
+  levels/*.json          Misiones (layout + identidad + reglas + oleadas) -> LevelLoader
   structures/*.tres      StructureData                                  -> StructureCatalog
   enemies/*.tres         EnemyData                                      -> EnemyCatalog
   turrets/*.tres         TurretData (arma), referenciada por data/structures/turret_*.tres
@@ -19,7 +19,7 @@ scenes/
   enemies/enemy_view.tscn  Vista reutilizable de un enemigo (instanciada por EnemyLayer)
   turrets/turret_view.tscn Arma giratoria de una torreta (instanciada por CombatLayer)
 scripts/
-  core/                  Palette, GameSession (estado de una partida)
+  core/                  Palette, GameSession (estado + máquina de estados), MissionStats, MissionScore
   grid/                  Terrain, GridModel, Placement
   navigation/            MovementClass, NavGrid (campos de flujo por clase)
   construction/          StructureData, StructureCatalog, ConstructionService
@@ -27,14 +27,16 @@ scripts/
   combat/                Damage, Targeting, TurretData, TurretState, Projectile, CombatSystem, TurretView
   economy/               Wallet
   levels/                LevelData, LevelLoader
-  gameplay/              Battle, GridView, EnemyLayer, CombatLayer, BattleCamera, TestAssault (debug)
-  ui/                    UiTheme, BattleHud
+  waves/                 WaveData (oleada + grupos, calendario), WaveManager
+  gameplay/              Battle, GridView, EnemyLayer, CombatLayer, BattleCamera
+  ui/                    UiTheme, BattleHud, Sfx (sonido sintetizado provisional)
   menus/                 MainMenu
 tests/
   run_tests.gd           Runner headless (admite pruebas con await)
   unit/                  Suites unitarias + smoke de escenas
   visual/                Recorridos E2E con render y capturas (drive_battle, drive_enemies, drive_combat)
-  perf/                  bench_enemies.gd, bench_combat.gd (lógica headless o escena con render)
+  perf/                  bench_enemies.gd, bench_combat.gd, bench_mission.gd (lógica headless o con render)
+  sim/                   strategy_bot.gd (jugador scripted), sim_mission.gd (comparación de estrategias)
 docs/                    Documentación (.gdignore: Godot no la importa)
 ```
 
@@ -50,10 +52,12 @@ GameSession ──posee──> GridModel ──señales placement_added/removed�
      │               ▲ occupied_cells / route_requirements   ▲ damage() (única puerta de daño)
      ├──posee──> ConstructionService ──valida con──> NavGrid.find_broken_routes
      │                               ──consulta──> EnemyRoster (opcional); price_of() (recargo)
-     └──posee──> CombatSystem ──escucha placement_added/removed──> GridModel
-                              ──Targeting.select (NavGrid.distance)──> EnemyRoster.damage()
+     ├──posee──> CombatSystem ──escucha placement_added/removed──> GridModel
+     │                        ──Targeting.select (NavGrid.distance)──> EnemyRoster.damage()
+     ├──posee──> WaveManager ──calendario de LevelData.waves──> EnemyRoster.spawn()
+     └──posee──> MissionStats (bajas, créditos, fugas) ──> MissionScore
 
-Battle (Node2D) ──posee──> GameSession, TestAssault (debug)
+Battle (Node2D) ──posee──> GameSession; Sfx
    ├── GridView (Node2D)  ─ terreno, estructuras, rutas (de NavGrid), fantasma
    │     ├── EnemyLayer (Node2D) ─ crea/libera EnemyView según señales de EnemyRoster
    │     └── CombatLayer (Node2D) ─ TurretView por torreta + proyectiles/efectos en un _draw
@@ -87,7 +91,10 @@ escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la
 | `GridView` / `EnemyLayer` / `EnemyView` | Node2D | Render placeholder; `EnemyLayer.sync` actualiza todas las vistas en un bucle |
 | `BattleCamera` | Camera2D | Zoom 1×–3× en torno a un punto, pan con límites |
 | `BattleHud` | Control | Estado, panel de construcción, feedback, pausa, derrota, safe areas |
-| `TestAssault` | RefCounted | **Andamiaje de depuración** del Hito 2 (columna fija de 10 enemigos). Lo sustituye `WaveManager` en el Hito 4 |
+| `WaveData` | RefCounted | Oleada: grupos (enemigo, cantidad, inicio, intervalo, spawn), modificadores, bono, condición de fin; `schedule()` determinista |
+| `WaveManager` | RefCounted | Inicia oleadas, consume el calendario con el reloj de la oleada, señala tipos nuevos (aviso de tanques); fin = todo generado y nadie vivo |
+| `MissionStats` / `MissionScore` | RefCounted / estático | Libro de la partida y fórmula de puntuación/estrellas (D-020) |
+| `Sfx` | Node | Señales de audio sintetizadas para eventos de misión (D-022) |
 | `Damage` | estático | Tabla tipo de daño × clase de blindaje (D-016) |
 | `Targeting` | estático | Capas GROUND/AIR, prioridades FIRST/CLOSEST/STRONGEST, `select()` determinista O(enemigos) |
 | `TurretData` | Resource | Arma: daño, tipo, cadencia, alcance, proyectil, velocidad, área, capas, prioridad, giro, tolerancia, silueta |
@@ -120,6 +127,30 @@ escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la
   (la simulación se congela).
 - **Muerte:** `EnemyRoster.damage()` aplica `amount × (1 − armor)`; a hp ≤ 0 → `DEAD`, recompensa al `Wallet`, vista con
   animación de salida. (Aún no hay fuente de daño en juego: llega con las torretas en el Hito 3.)
+
+## Estados de misión (Hito 4, D-018)
+
+```
+            start_wave()                 oleada resuelta (no última)          debrief_seconds
+PREPARATION ───────────► WAVE_ACTIVE ─────────────────────────► WAVE_COMPLETED ────────────► PREPARATION
+     ▲                       │   │                                  │ start_wave() (salta el resumen)
+     │                       │   └── última oleada resuelta ──► VICTORY (final)
+     │                       └────── HQ = 0 ───────────────────► DEFEAT  (final; también desde PREPARATION/WAVE_COMPLETED)
+ pause()/resume(): cualquier estado no final ⇄ PAUSED (vuelve exactamente al anterior)
+```
+
+| Estado | Simulación (`tick`) | Oleadas | Construir | Recargo | Retirar |
+|---|---|---|---|---|---|
+| PREPARATION | resuelve lo que quede (en juego normal, nada) | no | sí | no | sí |
+| WAVE_ACTIVE | oleadas → enemigos → (si no terminó) combate → ¿oleada resuelta? | sí | sí (regla de misión) | sí | regla de misión |
+| WAVE_COMPLETED | como PREPARATION + cuenta atrás del resumen | no | sí | no | sí |
+| PAUSED | nada | no | no | — | no |
+| VICTORY / DEFEAT | nada; proyectiles vaciados | no | no | — | no |
+
+Toda transición pasa por `GameSession._transition()`, que valida contra `TRANSITIONS`. Señales: `phase_changed`,
+`wave_started`, `wave_completed` (antes del cambio de estado), `enemy_type_arrived`, `hq_damaged`, `base_hp_changed`,
+`mission_ended(victory)`. `Battle` traduce START WAVE/PAUSE del HUD en `start_wave()`/`pause()`/`resume()` y pausa
+también el árbol para congelar efectos.
 
 ## Combate (Hito 3)
 
@@ -175,7 +206,9 @@ Con `emulate_mouse_from_touch`, el dedo 0 también genera eventos de ratón: mie
 | `CombatLayer` | `heavy_impact` | `BattleCamera.add_shake` |
 | `Wallet` | `credits_changed` | `BattleHud` |
 | `GameSession` | `phase_changed`, `base_hp_changed` | `BattleHud` |
-| `BattleHud` | `tool_changed`, `assault_requested`, `restart_requested`, `menu_requested` | `Battle` |
+| `BattleHud` | `tool_changed`, `start_wave_requested`, `pause_requested`, `restart_requested`, `menu_requested` | `Battle` |
+| `GameSession` | `wave_started`, `wave_completed`, `enemy_type_arrived`, `hq_damaged`, `mission_ended` | `BattleHud` (banners, INTEL, resultados), `Battle` (sacudida, `Sfx`) |
+| `WaveManager` | `wave_started`, `enemy_type_arrived`, `wave_spawning_finished` | `GameSession` |
 
 Rendimiento de señales: ninguna se emite por enemigo y fotograma; solo en eventos (spawn, muerte, llegada, cambio de topología).
 
@@ -187,7 +220,9 @@ Rendimiento de señales: ninguna se emite por enemigo y fotograma; solo en event
 - **Nueva torreta:** `data/turrets/<id>.tres` (`TurretData`) + `data/structures/turret_<id>.tres` (category TURRET,
   `turret = ExtResource`) + registro en el catálogo. Si su silueta existe, no hace falta código.
 - **Nuevo tipo de daño / blindaje:** fila/columna en `Damage.MULTIPLIER` y su enum.
-- **Nuevo nivel:** `data/levels/*.json`; el loader valida conectividad.
+- **Nueva misión:** `data/levels/<id>.json` con mapa, identidad, reglas y oleadas; el loader lo valida todo (incluida la
+  conectividad). Ningún cambio de código salvo un tema visual nuevo (`LevelLoader.THEMES`) o una condición de victoria
+  nueva (`VICTORY_TYPES` + lógica en `GameSession`).
 - **Nueva clase de movimiento:** bit en `MovementClass` (y en `ALL`), flag en `StructureData.blocks_mask`, opción en
   `EnemyData.movement`, estilo en `GridView.ROUTE_STYLE` y `BattleHud.LEGEND_SHORT`. `NavGrid` crea su campo automáticamente.
 

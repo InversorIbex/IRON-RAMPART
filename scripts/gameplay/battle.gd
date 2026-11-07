@@ -26,8 +26,8 @@ var grid_view: GridView
 var enemy_layer: EnemyLayer
 var combat_layer: CombatLayer
 var camera: BattleCamera
+var sfx: Sfx
 var hud: BattleHud
-var assault: TestAssault = null
 ## CPU cost of the last frame's simulation + view sync (microseconds).
 ## Read by the benchmark and future debug overlays; two clock reads per frame.
 var last_sim_usec: int = 0
@@ -78,7 +78,16 @@ func _ready() -> void:
 	hud.tool_changed.connect(_on_tool_changed)
 	hud.restart_requested.connect(_restart)
 	hud.menu_requested.connect(_go_to_menu)
-	hud.assault_requested.connect(start_test_assault)
+	hud.start_wave_requested.connect(start_wave)
+	hud.pause_requested.connect(set_paused)
+	session.hq_damaged.connect(_on_hq_damaged)
+	sfx = Sfx.new()
+	add_child(sfx)
+	session.wave_started.connect(func(_i: int, _w: WaveData) -> void: sfx.play(Sfx.Cue.WAVE_START))
+	session.wave_completed.connect(_on_wave_completed_sfx)
+	session.enemy_type_arrived.connect(_on_enemy_type_sfx)
+	session.mission_ended.connect(func(victory: bool) -> void: sfx.play(Sfx.Cue.VICTORY if victory else Sfx.Cue.DEFEAT))
+	session.enemies.enemy_killed.connect(func(_e: Enemy) -> void: sfx.play(Sfx.Cue.KILL))
 
 	get_viewport().size_changed.connect(_layout)
 	_layout.call_deferred()
@@ -88,8 +97,6 @@ func _process(delta: float) -> void:
 	if session == null:
 		return
 	var t0 := Time.get_ticks_usec()
-	if assault != null:
-		assault.update(delta)
 	session.tick(delta)
 	var t1 := Time.get_ticks_usec()
 	enemy_layer.sync(delta)
@@ -101,11 +108,7 @@ func _process(delta: float) -> void:
 		if _info_timer <= 0.0:
 			_info_timer = 0.5
 			hud.show_turret_info(_selected_turret)
-	if assault != null and assault.is_finished() and session.enemies.count() == 0 \
-			and session.phase == GameSession.Phase.COMBAT:
-		assault = null
-		session.set_phase(GameSession.Phase.BUILD)
-	hud.set_enemy_status(session.enemies.count(), assault.remaining() if assault != null else 0)
+	hud.set_enemy_status(session.enemies.count(), session.waves.remaining_to_spawn())
 	if _selected != null and session.enemies.count() > 0:
 		_preview_timer -= delta
 		if _preview_timer <= 0.0:
@@ -113,12 +116,34 @@ func _process(delta: float) -> void:
 			_refresh_preview()
 
 
-## DEBUG (Milestone 2): spawns TestAssault.SEQUENCE. Replaced by waves in Milestone 4.
-func start_test_assault() -> void:
-	if session == null or session.is_over() or assault != null:
+## START WAVE: only valid in PREPARATION / WAVE_COMPLETED (the session enforces it).
+func start_wave() -> bool:
+	return session != null and session.start_wave()
+
+
+## Pause is a mission state (PAUSED remembers the previous one); the scene
+## tree is paused too so tweens/effects freeze with the simulation.
+func set_paused(paused: bool) -> void:
+	if session == null:
 		return
-	assault = TestAssault.new(session)
-	session.set_phase(GameSession.Phase.COMBAT)
+	var ok := session.pause() if paused else session.resume()
+	if ok or not paused:
+		get_tree().paused = session.phase == GameSession.Phase.PAUSED
+
+
+func _on_hq_damaged(amount: int, _enemy: Enemy) -> void:
+	camera.add_shake(0.6 + 0.2 * amount)
+	sfx.play(Sfx.Cue.HQ_HIT)
+
+
+func _on_wave_completed_sfx(_index: int, _wave: WaveData, _bonus: int) -> void:
+	if not session.waves.is_last_wave():
+		sfx.play(Sfx.Cue.WAVE_COMPLETE)
+
+
+func _on_enemy_type_sfx(_index: int, enemy_id: StringName) -> void:
+	if enemy_id == &"heavy_tank":
+		sfx.play(Sfx.Cue.TANK_WARNING)
 
 
 func _notification(what: int) -> void:
@@ -262,6 +287,9 @@ func _commit(cell: Vector2i) -> void:
 			hud.show_feedback("%s built  (-%d CR%s)" % [_selected.display_name, check.cost, extra], false)
 		else:
 			hud.show_feedback(ConstructionService.reason_text(check), true)
+			sfx.play(Sfx.Cue.DENIED)
+			if check.reason == ConstructionService.Reason.INSUFFICIENT_CREDITS:
+				hud.flash_credits()
 		grid_view.set_ghost(_evaluate_at(cell))
 	elif _remove_mode:
 		_commit_remove(cell)
@@ -338,6 +366,7 @@ func _on_tool_changed(data: StructureData, remove_mode: bool) -> void:
 
 func _restart() -> void:
 	get_tree().paused = false
+	Engine.time_scale = 1.0
 	get_tree().reload_current_scene()
 
 

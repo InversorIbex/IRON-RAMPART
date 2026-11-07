@@ -80,3 +80,17 @@ Neutros derivados (terreno, roca, hormigón) se definen en `Palette` como variac
   explosiones de misil y destrucción de blindados.
 - Todos los colores de efectos y materiales están en `Palette` (`FX_*`, `METAL*`, `TRACK`, `SHADOW`).
 
+
+## Hito 4 — lenguaje visual de la misión (placeholders)
+
+- **Estado de misión siempre legible en la barra superior:** PREPARE DEFENSES (verde válido), UNDER ATTACK -
+  nombre de oleada (Alert Red + borde inferior rojo de 4 px), WAVE CLEARED (Tactical Gold), MISSION COMPLETE/FAILED.
+- **Banners** centrados sobre el mapa, bajo la barra: inicio de misión/oleada, ARMOR INBOUND (rojo), WAVE N CLEARED
+  (oro). Se desvanecen solos y no capturan input.
+- **INTEL** abajo a la izquierda solo durante la preparación: composición y entradas de la próxima oleada.
+- **Daño al HQ:** destello rojo a pantalla completa (≤ 35 % de opacidad, 0,45 s) + contador del HQ en rojo + sacudida.
+- **Recompensas:** "+N" dorado que sube y se desvanece en el punto de la baja (máximo 40 simultáneos).
+- **Créditos insuficientes:** el contador de créditos pulsa en rojo 0,5 s.
+- **Resultados:** título de 72 px (oro = victoria, rojo = derrota), tabla de dos columnas, botones táctiles grandes.
+- Ningún efecto tapa unidades o estructuras durante más de un instante; los banners se colocan sobre el mapa pero
+  se apagan en 2,5–4 s.

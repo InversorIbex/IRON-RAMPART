@@ -13,6 +13,7 @@ enum Fx { SPARK, PUFF, EXPLOSION, SMOKE, SCORCH, DEBRIS }
 const TURRET_SCENE := preload("res://scenes/turrets/turret_view.tscn")
 ## Hard cap on simultaneous effects so heavy fights can't explode the cost.
 const MAX_EFFECTS := 400
+const TEXT_LIFE := 0.9
 
 ## CPU time of the last _draw() (GDScript building draw commands), microseconds.
 var last_draw_usec: int = 0
@@ -23,6 +24,8 @@ var _views: Dictionary = {} # TurretState -> TurretView
 ## Each effect: [kind, position, age, life, size, extra]
 var _effects: Array = []
 var _active_last_frame: bool = false
+## Floating reward texts: [position, age, text]
+var _texts: Array = []
 
 
 func bind(combat: CombatSystem, roster: EnemyRoster, cell_size: float) -> void:
@@ -61,7 +64,14 @@ func sync(delta: float) -> void:
 	for p in _combat.get_projectiles():
 		if p.kind == TurretData.ProjectileKind.MISSILE:
 			_add(Fx.SMOKE, p.position - p.heading() * _cell * 0.12, 0.6, _cell * 0.08)
-	var active := not _effects.is_empty() or not _combat.get_projectiles().is_empty()
+	var j := 0
+	while j < _texts.size():
+		_texts[j][1] += delta
+		if _texts[j][1] >= TEXT_LIFE:
+			_texts.remove_at(j)
+		else:
+			j += 1
+	var active := not _effects.is_empty() or not _combat.get_projectiles().is_empty() or not _texts.is_empty()
 	if active or _active_last_frame:
 		queue_redraw()
 	_active_last_frame = active
@@ -103,6 +113,13 @@ func _draw_all() -> void:
 				for k in 6:
 					var dir := Vector2.from_angle(float(k) * TAU / 6.0 + fx[5])
 					draw_circle(fx[1] + dir * fx[4] * t, 3.0, Color(Palette.FX_DEBRIS, 1.0 - t))
+	# Reward pop-ups: rise and fade (gold = credits).
+	for tx in _texts:
+		var k: float = tx[1] / TEXT_LIFE
+		var pos: Vector2 = tx[0] + Vector2(-14, -18 - 28.0 * k)
+		draw_string(ThemeDB.fallback_font, pos + Vector2(1, 1), tx[2], HORIZONTAL_ALIGNMENT_LEFT, -1, 22,
+				Color(Palette.OLIVE_BLACK, 1.0 - k))
+		draw_string(ThemeDB.fallback_font, pos, tx[2], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(Palette.TACTICAL_GOLD, 1.0 - k))
 
 
 func _draw_projectile(p: Projectile) -> void:
@@ -163,6 +180,10 @@ func _on_explosion(pos: Vector2, radius_px: float, kind: int) -> void:
 
 
 func _on_enemy_killed(enemy: Enemy) -> void:
+	if enemy.data.reward > 0:
+		if _texts.size() >= 40:
+			_texts.pop_front()
+		_texts.append([enemy.position, 0.0, "+%d" % enemy.data.reward])
 	var size := maxf(enemy.data.visual_size.x, enemy.data.visual_size.y) * _cell
 	if enemy.data.silhouette == EnemyData.Silhouette.SOLDIER:
 		_add(Fx.PUFF, enemy.position, 0.5, size * 0.6)

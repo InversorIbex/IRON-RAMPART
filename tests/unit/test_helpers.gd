@@ -55,3 +55,21 @@ static func structure(id: String, cost: int, blocks_mask: int, footprint := Vect
 
 static func wall(cost: int = 25) -> StructureData:
 	return structure("wall", cost, MovementClass.ALL_GROUND)
+
+
+## Builds a WaveData in code: groups = [[enemy_id, count, start, interval(, spawn)], ...].
+static func wave(id: String, groups: Array, reward: int = 0) -> WaveData:
+	var w := WaveData.new()
+	w.id = id
+	w.display_name = id
+	w.reward = reward
+	for g in groups:
+		var group := WaveData.Group.new()
+		group.enemy_id = StringName(g[0])
+		group.count = g[1]
+		group.start = g[2]
+		group.interval = g[3]
+		group.spawn = g[4] if g.size() > 4 else WaveData.ALTERNATE
+		w.groups.append(group)
+	return w
+
