@@ -297,6 +297,9 @@ Línea base antes de tocar nada: 96/96 (Hito 3 verificado de nuevo, sin huecos c
 | Verificación | Resultado |
 |---|---|
 | `run_tests.gd` | ✅ **126/126** (96 + 30 nuevas: `test_waves` 9, `test_mission_data` 5, `test_game_state` 11, `test_mission_flow` 5), sin errores ni fugas |
+| `drive_battle` / `drive_enemies` / `drive_combat` | ✅ 14/14 · 16/16 · 20/20 (adaptados a START WAVE), sin avisos |
+| `drive_mission` (nuevo) | ✅ **23/23**: menú → PLAY → defensa inicial con toques reales (300 CR a precio base) → 5 oleadas con START WAVE del HUD; PAUSE congela posiciones y RESUME vuelve a WAVE_ACTIVE; banners de oleada y 3 × ARMOR INBOUND; WAVE N CLEARED; **victoria HQ 9/20, 85 bajas, 370 CR, puntuación 6070, 1 estrella** (otra ejecución: HQ 7 y 12, paso variable); RESTART → sesión anterior liberada (weakref nulo) y nueva limpia (350 CR, HQ 20, 0 estructuras); segunda partida sin defensas → MISSION FAILED en la oleada 2 → MAIN MENU |
+| Arranque menú / batalla | ✅ sin errores |
 | Mutaciones (6, todas detectadas) | simular en pausa → 2 fallos; fin de oleada sin esperar al calendario → 1; bono pagado dos veces → 4; PREPARATION→VICTORY permitido → 1; recompensa por fugas → 3; reanudar siempre en PREPARATION → 2 |
 | `gdlint` | ✅ |
 
@@ -339,4 +342,7 @@ a la potencia de fuego (riesgo R-8).
 
 Cuellos de botella: ninguno en nuestro código para esta misión (< 0,2 ms/frame); el frame lo domina el render del
 contenedor. **No medido en Android** (sin dispositivo): FPS, memoria de vídeo, batería, temperatura.
+
+Capturas del Hito 4: `docs/screenshots/mission_*.png` (defensa inicial con banner e INTEL, oleada de blindados
+bajo ataque, oleada superada con bono, pausa, victoria con puntuación, derrota).
 

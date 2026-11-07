@@ -149,6 +149,7 @@ func _main() -> void:
 	_click(_find_button(hud, "MAIN MENU").get_global_rect().get_center())
 	await _frames(10)
 	_check(current_scene.name == "MainMenu" and not paused, "MAIN MENU from results")
+	await _seconds(2.0) # let the last sound finish before shutting down
 	print("DRIVER RESULT: ", "OK" if ok else "FAILED")
 	quit(0 if ok else 1)
 

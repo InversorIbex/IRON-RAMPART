@@ -120,6 +120,7 @@ func _main() -> void:
 	# Leave the battle before quitting (audio playbacks at shutdown, see CLAUDE.md).
 	change_scene_to_file("res://scenes/menus/main_menu.tscn")
 	await _frames(10)
+	await create_timer(2.0, true, false, true).timeout # let the last sound finish
 	print("DRIVER RESULT: ", "OK" if ok else "FAILED")
 	quit(0 if ok else 1)
 
