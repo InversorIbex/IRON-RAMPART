@@ -1,0 +1,49 @@
+class_name Enemy
+extends RefCounted
+## One enemy on the field (pure state, no node). Moved by EnemyRoster.
+##
+## Movement model: the unit always travels from the centre of `cell` to the
+## centre of `next_cell`; `progress` in [0, 1) is how far along that segment
+## it is. That segment is committed (construction refuses both cells), so
+## route changes take effect at the next cell centre: smooth, no teleports,
+## no walking through walls.
+
+enum State { MOVING, BLOCKED, ARRIVED, DEAD }
+
+var id: int
+var data: EnemyData
+var movement: int
+var hp: float
+var state: int = State.MOVING
+var cell: Vector2i
+var next_cell: Vector2i
+var progress: float = 0.0
+## Local-space position (GridView space), updated by the roster.
+var position: Vector2 = Vector2.ZERO
+## Unit vector of the current segment (for rendering/turret aiming later).
+var heading: Vector2 = Vector2.RIGHT
+## Seconds alive; cells walked (stats, tests, "most advanced" targeting).
+var age: float = 0.0
+var cells_walked: int = 0
+
+
+func _init(p_id: int, p_data: EnemyData, spawn_cell: Vector2i) -> void:
+	id = p_id
+	data = p_data
+	movement = p_data.movement
+	hp = p_data.max_hp
+	cell = spawn_cell
+	next_cell = spawn_cell
+
+
+func is_alive() -> bool:
+	return state == State.MOVING or state == State.BLOCKED
+
+
+## Damage after armor. Returns the damage actually applied.
+func apply_damage(amount: float) -> float:
+	if not is_alive() or amount <= 0.0:
+		return 0.0
+	var dealt := amount * (1.0 - data.armor)
+	hp -= dealt
+	return dealt

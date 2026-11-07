@@ -10,9 +10,10 @@ todas las rutas. Detalle: `docs/GAME_DESIGN.md`.
 
 ## Estado del proyecto (actualiza esta sección al cerrar cada sesión)
 
-- Hito 0 ✅ y Hito 1 ✅ verificados en Godot 4.7.2 (sesión 2): 40/40 pruebas, recorrido con render 14/14.
-  Pendiente del Hito 1: prueba con dedo real en Android (se hará en el Hito 5).
-- Siguiente: Hito 2 (enemigos y navegación). Ver `docs/ROADMAP.md`.
+- Hitos 0, 1 y 2 ✅ en escritorio con Godot 4.7.2 (sesión 3): 60/60 pruebas, recorridos visuales 14/14 y 15/15,
+  benchmark 10–100 enemigos. Pendiente: Android real (Hito 5).
+- **D-012 (construir durante el combate) espera confirmación del usuario.**
+- Siguiente: Hito 3 (torretas y combate) — solo cuando el usuario lo pida. Ver `docs/ROADMAP.md`.
 - Pendientes y riesgos: `docs/ROADMAP.md`.
 
 ## Comandos
@@ -24,7 +25,8 @@ godot --headless --path . --quit-after 300                    # smoke de arranqu
 godot --path .                                                # jugar
 # Recorrido E2E con render + capturas (Linux sin pantalla: Xvfb)
 IR_SHOTS_DIR=/tmp/shots xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --resolution 1920x1080 \
-  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd
+  --rendering-driver opengl3 --script res://tests/visual/drive_battle.gd     # y drive_enemies.gd
+godot --headless --path . --script res://tests/perf/bench_enemies.gd          # benchmark (añade -- --render con Xvfb)
 ```
 
 Verificados el 2026-11-07 con Godot 4.7.2-stable (todos exit 0). En un contenedor cloud Godot no está
@@ -36,8 +38,11 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
 - Lógica = datos + servicios `RefCounted` sin nodos, testeables: `GridModel`, `NavGrid`, `ConstructionService`,
   `Wallet`, `LevelLoader`, agrupados en `GameSession` (una por intento de misión).
 - Escenas (`Battle`, `GridView`, `BattleHud`, `MainMenu`) solo renderizan y traducen input. No guardan estado de juego.
-- Navegación: `AStarGrid2D` por clase de movimiento (INFANTRY/WHEELED/TRACKED), ortogonal, recalculado solo en
-  `NavGrid.topology_changed`.
+- Navegación: **campos de flujo** (BFS desde la meta) por clase de movimiento (INFANTRY/WHEELED/TRACKED), ortogonal,
+  recalculados solo cuando cambia la topología. `NavGrid` escucha a `GridModel`: nunca lo sincronices a mano.
+  Enemigos (`EnemyRoster`), ruta dibujada y validación leen el mismo campo. Nunca A* por enemigo ni por frame.
+- Enemigos: lógica en `Enemy`/`EnemyRoster` (RefCounted, `update(delta)`), vista en `scenes/enemies/enemy_view.tscn`
+  sincronizada por `EnemyLayer`. Un enemigo nunca abandona su segmento `cell → next_cell`; construcción rechaza ambas celdas.
 - Toda construcción/retirada pasa por `ConstructionService` (`evaluate` es de solo lectura; un rechazo no cambia nada).
 - Datos: niveles en `data/levels/*.json` (layout ASCII), estructuras en `data/structures/*.tres` registradas en
   `StructureCatalog.PATHS`.
@@ -56,6 +61,10 @@ Sin Godot: `gdparse`/`gdlint` (pip `gdtoolkit==4.*`) validan sintaxis y estilo, 
   (conserva el rect 0×0 inicial y deja el control fuera de pantalla). Lo vigila `test_scenes_smoke`.
 - Tras cambiar UI, ejecuta `tests/visual/drive_battle.gd` y **mira las capturas**: las pruebas headless no ven el layout.
 - Versiona los `*.uid` y `*.import` que genera Godot. `docs/` lleva `.gdignore` (no se importa al juego).
+- Packed arrays guardados en diccionarios/propiedades: lee → modifica → **vuelve a guardar** (copy-on-write).
+- Señales hacia métodos, no lambdas que capturen la sesión (crean ciclos de referencias → fugas).
+- Una prueba nueva debe fallar con el código defectuoso: verifícalo (mutación) en los casos críticos.
+- Benchmarks: mide nuestro código por separado del render; en contenedor el render es por software (no extrapolar a móvil).
 
 ## Reglas para añadir sistemas
 

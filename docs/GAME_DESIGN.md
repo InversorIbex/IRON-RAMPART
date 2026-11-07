@@ -23,6 +23,9 @@ Fase de construcción → iniciar oleada → combate (ajustes limitados) → rec
   movimiento presente en la misión**. El rechazo explica la clase afectada y marca el spawn en rojo.
 - La ruta actual de cada clase se dibuja en el mapa (arena = infantería, oro = ruedas, rojo = orugas).
 - Retirada: solo en fase de construcción (configurable por nivel), dos toques, reembolso `floor(coste × refund_ratio)`.
+- **Construir en combate** ✅ (D-012, pendiente de tu confirmación): permitido por defecto. No se puede construir
+  sobre un enemigo ni dejar a un enemigo vivo sin ruta ("Would trap enemies"). Los enemigos adoptan la nueva ruta al
+  llegar a su siguiente celda.
 
 ## 4. Clases de movimiento
 
@@ -56,15 +59,19 @@ Parámetros en datos: coste, vida, daño, alcance, cadencia, velocidad de proyec
 prioridad (primero / más cercano / más vida / más avanzado), mejoras. Las torretas **también bloquean**
 (huella 1×1 o 2×2 por decidir) y por tanto forman parte del laberinto.
 
-## 7. Enemigos 📐 (Hito 2)
+## 7. Enemigos ✅ (Hito 2; valores provisionales en `data/enemies/*.tres`)
 
-| Enemigo | Clase | Vida | Velocidad | Blindaje | Daño a base |
-|---|---|---|---|---|---|
-| Infantry | INFANTRY | baja | media-alta | ninguno | 1 |
-| Light Vehicle | WHEELED | media | alta | ligero | 2 |
-| Heavy Tank | TRACKED | alta | baja | pesado | 5 |
+| Enemigo | Clase | Vida | Velocidad (celdas/s) | Blindaje | Daño a HQ | Recompensa |
+|---|---|---|---|---|---|---|
+| Infantry | INFANTRY | 60 | 1,5 | 0 % | 1 | 5 |
+| Light Vehicle | WHEELED | 140 | 2,4 | 25 % | 2 | 12 |
+| Heavy Tank | TRACKED | 600 | 0,8 | 60 % | 5 | 40 |
 
-Blindaje = multiplicador por tipo de daño (balas vs explosivo), no resta plana.
+- Blindaje actual = fracción genérica de daño absorbida. En el Hito 3 se añadirá multiplicador por tipo de daño
+  (balas vs explosivo), que es lo que hará que cada torreta tenga su objetivo natural.
+- Todos los enemigos de una clase comparten la misma navegación; la ruta dibujada es exactamente la que siguen.
+- Sin fuente de daño todavía (torretas: Hito 3). `TEST ASSAULT` (HUD) lanza una columna de depuración de 10 unidades
+  (17 de daño al HQ, sobrevivible) para observar el ciclo BUILD → COMBAT → BUILD.
 
 ## 8. Economía
 
@@ -113,4 +120,11 @@ No se crearán hasta validar que la misión 1 es divertida (Hito 6).
 
 - ¿Construcción durante el combate? (más tensión vs complejidad de enemigos atrapados). Hoy: no.
 - Tamaño de torretas (1×1 vs 2×2) y si bloquean a todas las clases.
-- Precisión táctil: con 16 filas en un móvil de 6,5" la celda mide ~4 mm. Ver ROADMAP, riesgo R-1.
+- Precisión táctil: resuelta en parte con zoom/pan (D-014); validar en dispositivo (Hito 5).
+
+## 13. Controles táctiles
+
+- Vista global a zoom 1 (todo el mapa visible: imprescindible para leer el laberinto durante el combate).
+- Pellizco = zoom (hasta 3×), dos dedos = desplazar, un dedo sin herramienta = desplazar.
+- Con herramienta: tocar/arrastrar apunta, soltar construye; soltar fuera del mapa o poner un segundo dedo cancela.
+- Retirar: dos toques sobre la misma estructura (muestra el reembolso antes de confirmar).

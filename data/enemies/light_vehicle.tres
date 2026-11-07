@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EnemyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_data.gd" id="1_edata"]
+
+[resource]
+script = ExtResource("1_edata")
+id = &"light_vehicle"
+display_name = "Light Vehicle"
+movement = 2
+max_hp = 140
+speed = 2.4
+armor = 0.25
+base_damage = 2
+reward = 12
+silhouette = 1
+visual_size = Vector2(0.62, 0.42)
+placeholder_color = Color(0.47, 0.44, 0.34, 1)

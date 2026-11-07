@@ -28,14 +28,21 @@ Criterio: el proyecto se abre sin errores y se ejecuta una escena básica.
 
 Criterio: el jugador puede construir obstáculos y modificar caminos sin bloquear ilegalmente la base.
 
-## Hito 2 — Enemigos y navegación ⬜ ← siguiente
+## Hito 2 — Enemigos y navegación ✅ (escritorio; dispositivo pendiente → Hito 5)
 
-- Datos `EnemyData` (Resource): vida, velocidad, clase de movimiento, blindaje, daño a base, recompensa
-- Spawner de prueba; enemigos con movimiento interpolado entre centros de celda
-- Re-path en `topology_changed` desde la siguiente celda (sin teletransportes)
-- Llegada a la base → daño → derrota
-- Pruebas: casos 8 y 12 (derrota)
-- Medición: N enemigos simultáneos vs tiempo de frame (objetivo 150 en gama media a 60 FPS)
+- ✅ Auditoría de arquitectura (ARCHITECTURE.md / TESTING.md sesión 3); críticos y altos corregidos
+- ✅ `EnemyData` + 3 tipos en datos; `EnemyCatalog`
+- ✅ `Enemy` + `EnemyRoster`: spawn, movimiento interpolado, re-ruta en la siguiente celda, llegada, daño al HQ, muerte, recompensa
+- ✅ Navegación compartida por campos de flujo (sin A* por enemigo, sin recálculo por frame)
+- ✅ Construir en combate sin pisar ni encerrar enemigos (D-012, **pendiente de confirmación de diseño**)
+- ✅ Vista reutilizable `EnemyView` (escena) + `EnemyLayer`; siluetas y animaciones provisionales
+- ✅ Derrota (HQ a 0) con pantalla; reinicio limpio
+- ✅ Cámara: pellizco, pan, rueda; cancelación por multitáctil (D-014)
+- ✅ Benchmark 10/25/50/100 enemigos (lógica y render) — TESTING.md
+- ✅ 60 pruebas unitarias/smoke + recorridos visuales 14/14 y 15/15
+- ⬜ Rendimiento y gestos en dispositivo Android real (Hito 5)
+
+Criterio: los enemigos recorren correctamente el laberinto construido por el jugador. **Cumplido en escritorio.**
 
 ## Hito 3 — Torretas y combate ⬜
 
@@ -60,15 +67,17 @@ Sesiones de prueba, ajuste de dificultad/economía, claridad visual, lista de me
 
 | Id | Riesgo | Mitigación |
 |---|---|---|
-| R-1 | **Precisión táctil**: 16 filas en un móvil de 6,5" ⇒ celda ≈ 4 mm, menor que un dedo | Gesto "arrastrar y soltar" (implementado); evaluar en dispositivo: zoom/pan de cámara, fantasma desplazado sobre el dedo, o botón de confirmar |
+| R-1 | **Precisión táctil**: celda ≈ 3,9 mm a zoom 1 en un móvil de 6,5" | Zoom 1×–3× + pan implementados (≈ 8,6 mm a 2,2×). Validar en dispositivo; opcional: cursor desplazado / confirmación |
 | R-2 | ~~Código no ejecutado en Godot~~ | Resuelto en sesión 2 |
-| R-3 | Enemigos atrapados si se permite construir en combate | Hoy se prohíbe; diseñar regla en Hito 2 |
+| R-3 | ~~Enemigos atrapados al construir en combate~~ | Resuelto: validación incluye enemigos vivos + estado BLOCKED defensivo |
 | R-4 | `.json` no incluidos en el export | Filtro `*.json` en el preset (D-005) |
-| R-5 | Rendimiento con muchas unidades | Medir en Hito 2; plan B campo de flujo (D-004) |
+| R-5 | Rendimiento con muchas unidades | Lógica medida: 0,4 ms/frame con 100. Render medido solo con rasterizador software: medir en GPU móvil (Hito 5) |
+| R-6 | Construir en combate cambia el diseño (D-012) | Pendiente de confirmación; configurable por nivel |
 
 ## Tareas pendientes inmediatas
 
-1. Revisión humana del Hito 1 en el editor (jugar la misión 1 con ratón): ¿se entiende la regla, se leen las rutas?
-2. Hito 2: `EnemyData`, spawner de prueba, movimiento interpolado, re-path en `topology_changed`, daño a la base.
-3. Añadir CI (GitHub Actions) que ejecute `run_tests.gd` con Godot 4.7.2 headless.
-4. Cosmético: centrar la franja del menú bajo el título; la etiqueta "IN" del spawn queda tapada por las rutas.
+1. **Confirmar D-012** (construir durante el combate) o desactivarlo en `mission_01.json`.
+2. Hito 3: `TurretData`, adquisición de objetivos, proyectiles deterministas, tipos de daño vs blindaje, efectos.
+3. CI (GitHub Actions) con Godot 4.7.2 headless: `run_tests.gd` + lint.
+4. Hito 5 (adelantable): APK de depuración para medir FPS y probar gestos en un teléfono real.
+5. Cosmético: franja del menú; etiqueta "IN" tapada por rutas; enemigos pequeños y de bajo contraste sobre arena.

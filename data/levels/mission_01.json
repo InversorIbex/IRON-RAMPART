@@ -8,6 +8,7 @@
 	"movement_classes": ["infantry", "wheeled", "tracked"],
 	"available_structures": ["sandbags", "concrete_wall", "antitank_barrier"],
 	"rules": {
+		"allow_build_during_combat": true,
 		"allow_remove_during_combat": false
 	},
 	"layout": [

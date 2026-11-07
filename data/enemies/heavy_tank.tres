@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EnemyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_data.gd" id="1_edata"]
+
+[resource]
+script = ExtResource("1_edata")
+id = &"heavy_tank"
+display_name = "Heavy Tank"
+movement = 4
+max_hp = 600
+speed = 0.8
+armor = 0.6
+base_damage = 5
+reward = 40
+silhouette = 2
+visual_size = Vector2(0.86, 0.6)
+placeholder_color = Color(0.36, 0.38, 0.30, 1)

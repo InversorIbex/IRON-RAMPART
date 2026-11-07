@@ -21,8 +21,9 @@ const OPEN_LAYOUT := [
 ]
 
 
-static func level_dict(layout: Array, credits: int = 1000) -> Dictionary:
+static func level_dict(layout: Array, credits: int = 1000, rules: Dictionary = {}) -> Dictionary:
 	return {
+		"rules": rules,
 		"format_version": 1,
 		"id": "test_level",
 		"name": "Test",
@@ -34,8 +35,8 @@ static func level_dict(layout: Array, credits: int = 1000) -> Dictionary:
 	}
 
 
-static func make_session(layout: Array, credits: int = 1000) -> GameSession:
-	var result := LevelLoader.parse_dict(level_dict(layout, credits), "test")
+static func make_session(layout: Array, credits: int = 1000, rules: Dictionary = {}) -> GameSession:
+	var result := LevelLoader.parse_dict(level_dict(layout, credits, rules), "test")
 	assert(result.is_ok(), "fixture level invalid: %s" % [result.errors])
 	return GameSession.new(result.level)
 

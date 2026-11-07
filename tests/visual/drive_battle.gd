@@ -64,11 +64,11 @@ func _main() -> void:
 	# Concrete wall elsewhere forces a detour: route must change.
 	_click(_find_button(hud, "CONCRETE WALL").get_global_rect().get_center())
 	await _frames(2)
-	var path_before := session.nav.find_path(MovementClass.INFANTRY, Vector2i(0, 8), session.level.goal_cell)
+	var path_before := session.nav.path_to_goal(MovementClass.INFANTRY, Vector2i(0, 8))
 	for c in [Vector2i(14, 4), Vector2i(14, 5), Vector2i(14, 6), Vector2i(14, 7), Vector2i(14, 8)]:
 		_tap_cell(c)
 		await _frames(2)
-	var path_after := session.nav.find_path(MovementClass.INFANTRY, Vector2i(0, 8), session.level.goal_cell)
+	var path_after := session.nav.path_to_goal(MovementClass.INFANTRY, Vector2i(0, 8))
 	log_lines.append("west infantry route: %d -> %d cells" % [path_before.size(), path_after.size()])
 	_check(path_after != path_before, "route changed after walls")
 

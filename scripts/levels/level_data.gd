@@ -19,7 +19,9 @@ var base_cells: Array[Vector2i] = []
 var goal_cell: Vector2i = Vector2i.ZERO
 ## Structure ids offered in the build bar, in display order.
 var available_structures: PackedStringArray = PackedStringArray()
-## Whether the player may remove structures during combat (Milestone 2+).
+## Whether the player may build during combat (validated against live units).
+var allow_build_during_combat: bool = true
+## Whether the player may remove structures during combat.
 var allow_remove_during_combat: bool = false
 
 

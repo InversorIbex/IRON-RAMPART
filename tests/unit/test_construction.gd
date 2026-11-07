@@ -17,7 +17,7 @@ const GOAL_OPEN := Vector2i(7, 2)
 
 
 func _path(session: GameSession, bit: int) -> Array[Vector2i]:
-	return session.nav.find_path(bit, session.level.spawn_cells[0], session.level.goal_cell)
+	return session.nav.path_to_goal(bit, session.level.spawn_cells[0])
 
 
 # 1
@@ -162,7 +162,7 @@ func test_non_blocking_structure_skips_route_check() -> void:
 
 
 func test_build_and_remove_locked_outside_build_phase() -> void:
-	var s := H.make_session(H.OPEN_LAYOUT, 100)
+	var s := H.make_session(H.OPEN_LAYOUT, 100, {"allow_build_during_combat": false})
 	s.construction.build(H.wall(25), Vector2i(4, 0))
 	s.set_phase(GameSession.Phase.COMBAT)
 	assert_eq(s.construction.build(H.wall(25), Vector2i(5, 0)).reason, ConstructionService.Reason.PHASE_LOCKED)

@@ -10,6 +10,8 @@ const SUITES := [
 	"res://tests/unit/test_construction.gd",
 	"res://tests/unit/test_level_loader.gd",
 	"res://tests/unit/test_catalog.gd",
+	"res://tests/unit/test_flow_field.gd",
+	"res://tests/unit/test_enemies.gd",
 	"res://tests/unit/test_scenes_smoke.gd",
 ]
 
@@ -40,7 +42,8 @@ func _run() -> void:
 			if suite.has_method("set_tree"):
 				suite.call("set_tree", self)
 			suite.call("before_each")
-			suite.call(name)
+			# Tests may be coroutines (use `await`); awaiting a plain call is a no-op.
+			await suite.call(name)
 			suite.call("after_each")
 			var failures: Array[String] = suite.get("failures")
 			if failures.is_empty():

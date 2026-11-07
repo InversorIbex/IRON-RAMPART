@@ -58,7 +58,7 @@ func _recompute_routes() -> void:
 		if (level.movement_mask & bit) == 0:
 			continue
 		for spawn in level.spawn_cells:
-			var path := session.nav.find_path(bit, spawn, level.goal_cell)
+			var path := session.nav.path_to_goal(bit, spawn)
 			var points := PackedVector2Array()
 			for cell in path:
 				points.append(session.grid.cell_to_local(cell) + ROUTE_STYLE[bit]["offset"])
@@ -193,9 +193,9 @@ func _draw_ghost() -> void:
 				var r := grid.cell_rect(cell).grow(-14)
 				draw_line(r.position, r.end, Palette.ALERT_RED, 4.0)
 				draw_line(Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y), Palette.ALERT_RED, 4.0)
-	# Explain route blocks visually: flag every spawn that would be cut off.
+	# Explain route blocks visually: flag every spawn/unit that would be cut off.
 	for route in _ghost.broken_routes:
-		var rect := grid.cell_rect(route["spawn"]).grow(4)
+		var rect := grid.cell_rect(route["cell"]).grow(4)
 		draw_rect(rect, Color(Palette.ALERT_RED, 0.35))
 		draw_rect(rect, Palette.ALERT_RED, false, 5.0)
 

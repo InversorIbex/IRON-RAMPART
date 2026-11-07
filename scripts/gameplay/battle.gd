@@ -9,19 +9,40 @@ extends Node2D
 ##    so UI taps can't trigger accidental builds.
 ##  - Remove mode: first tap arms a structure, second tap on it confirms.
 ##  - Right click / Esc / Android back: cancel current tool.
+##  - Camera: pinch = zoom, two-finger drag = pan; one-finger drag pans only
+##    when no tool is selected. A second finger cancels any aim in progress,
+##    so pinching can never build. Desktop: wheel = zoom, middle drag = pan.
 
 const LEVEL_PATH := "res://data/levels/mission_01.json"
 const MENU_SCENE := "res://scenes/menus/main_menu.tscn"
 
+## Screen distance a press must travel before it counts as a drag (pan).
+const DRAG_THRESHOLD := 14.0
+## While enemies move, the build preview is re-validated at this period.
+const PREVIEW_REFRESH := 0.2
+
 var session: GameSession
 var grid_view: GridView
+var enemy_layer: EnemyLayer
+var camera: BattleCamera
 var hud: BattleHud
+var assault: TestAssault = null
+## CPU cost of the last frame's simulation + view sync (microseconds).
+## Read by the benchmark and future debug overlays; two clock reads per frame.
+var last_sim_usec: int = 0
+var last_view_usec: int = 0
 
 var _selected: StructureData = null
 var _remove_mode: bool = false
 var _aiming: bool = false
 var _hover_cell: Vector2i = Vector2i(-9999, -9999)
 var _armed_remove_cell: Vector2i = Vector2i(-1, -1)
+var _touches: Dictionary = {} # touch index -> screen position
+var _gesture: bool = false # multi-touch in progress: ignore emulated mouse
+var _press_pos: Vector2 = Vector2.ZERO
+var _panning: bool = false
+var _mouse_pan: bool = false
+var _preview_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -34,6 +55,12 @@ func _ready() -> void:
 	grid_view = GridView.new()
 	add_child(grid_view)
 	grid_view.bind(session)
+	enemy_layer = EnemyLayer.new()
+	grid_view.add_child(enemy_layer)
+	enemy_layer.bind(session.enemies, session.grid.cell_size)
+	camera = BattleCamera.new()
+	add_child(camera)
+	camera.make_current()
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -43,9 +70,41 @@ func _ready() -> void:
 	hud.tool_changed.connect(_on_tool_changed)
 	hud.restart_requested.connect(_restart)
 	hud.menu_requested.connect(_go_to_menu)
+	hud.assault_requested.connect(start_test_assault)
 
 	get_viewport().size_changed.connect(_layout)
 	_layout.call_deferred()
+
+
+func _process(delta: float) -> void:
+	if session == null:
+		return
+	var t0 := Time.get_ticks_usec()
+	if assault != null:
+		assault.update(delta)
+	session.tick(delta)
+	var t1 := Time.get_ticks_usec()
+	enemy_layer.sync(delta)
+	last_sim_usec = t1 - t0
+	last_view_usec = Time.get_ticks_usec() - t1
+	if assault != null and assault.is_finished() and session.enemies.count() == 0 \
+			and session.phase == GameSession.Phase.COMBAT:
+		assault = null
+		session.set_phase(GameSession.Phase.BUILD)
+	hud.set_enemy_status(session.enemies.count(), assault.remaining() if assault != null else 0)
+	if _selected != null and session.enemies.count() > 0:
+		_preview_timer -= delta
+		if _preview_timer <= 0.0:
+			_preview_timer = PREVIEW_REFRESH
+			_refresh_preview()
+
+
+## DEBUG (Milestone 2): spawns TestAssault.SEQUENCE. Replaced by waves in Milestone 4.
+func start_test_assault() -> void:
+	if session == null or session.is_over() or assault != null:
+		return
+	assault = TestAssault.new(session)
+	session.set_phase(GameSession.Phase.COMBAT)
 
 
 func _notification(what: int) -> void:
@@ -67,6 +126,8 @@ func _layout() -> void:
 	var s := minf(area.size.x / map_size.x, area.size.y / map_size.y)
 	grid_view.scale = Vector2(s, s)
 	grid_view.position = area.position + (area.size - map_size * s) * 0.5
+	var vp := get_viewport_rect().size
+	camera.reset_view(vp, vp.x - area.end.x, area.position.y)
 
 
 # --- Input -------------------------------------------------------------------
@@ -74,18 +135,40 @@ func _layout() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if session == null:
 		return
-	if event is InputEventMouseMotion:
-		_update_cursor(_event_cell((event as InputEventMouseMotion).position))
+	if event is InputEventScreenTouch:
+		_on_touch(event as InputEventScreenTouch)
+	elif event is InputEventScreenDrag:
+		_on_drag(event as InputEventScreenDrag)
+	elif _gesture and event is InputEventMouse:
+		return # emulated mouse from finger 0 during a pinch: never build/pan
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if _mouse_pan:
+			camera.pan_by(mm.relative)
+		elif _panning or (_pressing_without_tool(mm) and mm.position.distance_to(_press_pos) > DRAG_THRESHOLD):
+			_panning = true
+			camera.pan_by(mm.relative)
+		else:
+			_update_cursor(_event_cell(mm.position))
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			var cell := _event_cell(mb.position)
 			if mb.pressed:
-				_aiming = session.grid.is_in_bounds(cell)
+				_press_pos = mb.position
+				_panning = false
+				_aiming = session.grid.is_in_bounds(cell) and (_selected != null or _remove_mode)
 				_update_cursor(cell)
-			elif _aiming:
+			else:
+				if _aiming:
+					_commit(cell)
 				_aiming = false
-				_commit(cell)
+				_panning = false
+			get_viewport().set_input_as_handled()
+		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
+			_mouse_pan = mb.pressed
+		elif mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and mb.pressed:
+			camera.zoom_at(mb.position, 1.15 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.15)
 			get_viewport().set_input_as_handled()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			hud.clear_selection()
@@ -95,6 +178,46 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
 			hud.clear_selection()
 			get_viewport().set_input_as_handled()
+
+
+func _pressing_without_tool(mm: InputEventMouseMotion) -> bool:
+	return (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0 and _selected == null and not _remove_mode
+
+
+func _on_touch(t: InputEventScreenTouch) -> void:
+	if t.pressed:
+		# Ignore fingers that land on the HUD (buttons handle those).
+		if _touches.is_empty() and not hud.map_area().has_point(t.position):
+			return
+		_touches[t.index] = t.position
+		if _touches.size() >= 2 and not _gesture:
+			_gesture = true
+			_aiming = false # a second finger cancels the pending build
+			_hover_cell = Vector2i(-9999, -9999)
+			grid_view.clear_cursor()
+	else:
+		_touches.erase(t.index)
+		if _touches.is_empty():
+			_gesture = false
+
+
+func _on_drag(d: InputEventScreenDrag) -> void:
+	if not _touches.has(d.index):
+		return
+	if _touches.size() < 2:
+		_touches[d.index] = d.position
+		return
+	var keys := _touches.keys()
+	var other: Vector2 = _touches[keys[1] if keys[0] == d.index else keys[0]]
+	var old_pos: Vector2 = _touches[d.index]
+	var old_mid := (old_pos + other) * 0.5
+	var new_mid := (d.position + other) * 0.5
+	var old_dist := old_pos.distance_to(other)
+	var new_dist := d.position.distance_to(other)
+	if old_dist > 1.0:
+		camera.zoom_at(new_mid, new_dist / old_dist)
+	camera.pan_by(new_mid - old_mid)
+	_touches[d.index] = d.position
 
 
 func _event_cell(viewport_pos: Vector2) -> Vector2i:
@@ -152,6 +275,11 @@ func _is_armed(cell: Vector2i) -> bool:
 		return false
 	var armed := session.grid.get_placement_at(_armed_remove_cell)
 	return armed != null and armed == session.grid.get_placement_at(cell)
+
+
+func _refresh_preview() -> void:
+	if session.grid.is_in_bounds(_hover_cell):
+		grid_view.set_ghost(_evaluate_at(_hover_cell))
 
 
 func _evaluate_at(cell: Vector2i) -> ConstructionService.Check:

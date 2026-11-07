@@ -2,7 +2,12 @@ class_name ConstructionService
 extends RefCounted
 ## Single authority for building and removing structures.
 ## Every placement goes through `evaluate` first; a rejected build never
-## touches credits, the grid or navigation.
+## touches credits, the grid or navigation. Navigation follows the grid by
+## itself (NavGrid listens to GridModel), so this class never syncs it.
+##
+## Route rule: after a placement, every spawn must still reach the goal for
+## every movement class of the mission, and every live enemy must still reach
+## it from the cell it is walking to. Cells under enemies cannot be built on.
 
 signal structure_built(placement: Placement)
 signal structure_removed(placement: Placement, refund: int)
@@ -14,6 +19,7 @@ enum Reason {
 	OUT_OF_BOUNDS,
 	TERRAIN_NOT_BUILDABLE,
 	OCCUPIED,
+	OCCUPIED_BY_UNIT,
 	INSUFFICIENT_CREDITS,
 	BLOCKS_ROUTE,
 	NOTHING_TO_REMOVE,
@@ -27,7 +33,8 @@ class Check:
 	var data: StructureData = null
 	var origin: Vector2i = Vector2i.ZERO
 	var cells: Array[Vector2i] = []
-	## Routes that this placement would cut: [{ "spawn": Vector2i, "movement": int }].
+	## Routes this placement would cut:
+	## [{ "cell": Vector2i, "movement": int, "kind": "spawn" | "unit" }].
 	var broken_routes: Array[Dictionary] = []
 	var placement: Placement = null
 	var refund: int = 0
@@ -42,9 +49,9 @@ var removal_enabled: bool = true
 var _grid: GridModel
 var _nav: NavGrid
 var _wallet: Wallet
-var _spawns: Array[Vector2i] = []
-var _goal: Vector2i
-var _required_mask: int
+var _spawn_requirements: Array[Dictionary] = []
+## Optional live units (EnemyRoster). Null = no units on the map.
+var _units: EnemyRoster = null
 
 
 func _init(
@@ -52,14 +59,18 @@ func _init(
 		nav: NavGrid,
 		wallet: Wallet,
 		spawns: Array[Vector2i],
-		goal: Vector2i,
 		required_mask: int) -> void:
 	_grid = grid
 	_nav = nav
 	_wallet = wallet
-	_spawns.assign(spawns)
-	_goal = goal
-	_required_mask = required_mask
+	for bit in MovementClass.ALL:
+		if required_mask & bit:
+			for spawn in spawns:
+				_spawn_requirements.append({"cell": spawn, "movement": bit, "kind": "spawn"})
+
+
+func set_units(units: EnemyRoster) -> void:
+	_units = units
 
 
 ## Footprint origin for a structure centred under `cell` (useful for touch).
@@ -93,12 +104,17 @@ func evaluate(data: StructureData, origin: Vector2i) -> Check:
 		if _grid.is_occupied(cell):
 			check.reason = Reason.OCCUPIED
 			return check
+	if _units != null and data.blocks_mask != MovementClass.NONE:
+		var under_units := _units.occupied_cells()
+		for cell in check.cells:
+			if under_units.has(cell):
+				check.reason = Reason.OCCUPIED_BY_UNIT
+				return check
 	if not _wallet.can_afford(data.cost):
 		check.reason = Reason.INSUFFICIENT_CREDITS
 		return check
 	if data.blocks_mask != MovementClass.NONE:
-		check.broken_routes = _nav.find_broken_routes(
-				_spawns, _goal, _required_mask, check.cells, data.blocks_mask)
+		check.broken_routes = _nav.find_broken_routes(_route_requirements(), check.cells, data.blocks_mask)
 		if not check.broken_routes.is_empty():
 			check.reason = Reason.BLOCKS_ROUTE
 			return check
@@ -114,7 +130,6 @@ func build(data: StructureData, origin: Vector2i) -> Check:
 		check.reason = Reason.INSUFFICIENT_CREDITS
 		return check
 	check.placement = _grid.add_placement(data, origin)
-	_nav.refresh_cells(check.cells)
 	structure_built.emit(check.placement)
 	return check
 
@@ -136,7 +151,6 @@ func remove_at(cell: Vector2i) -> Check:
 	check.placement = placement
 	check.refund = placement.data.refund_amount()
 	_grid.remove_placement(placement)
-	_nav.refresh_cells(placement.cells)
 	_wallet.earn(check.refund)
 	structure_removed.emit(placement, check.refund)
 	check.reason = Reason.OK
@@ -145,7 +159,16 @@ func remove_at(cell: Vector2i) -> Check:
 
 ## Current routes still valid? (Invariant check, used by tests and debug.)
 func all_routes_open() -> bool:
-	return _nav.find_broken_routes(_spawns, _goal, _required_mask).is_empty()
+	return _nav.find_broken_routes(_route_requirements()).is_empty()
+
+
+func _route_requirements() -> Array[Dictionary]:
+	if _units == null:
+		return _spawn_requirements
+	var reqs: Array[Dictionary] = []
+	reqs.assign(_spawn_requirements)
+	reqs.append_array(_units.route_requirements())
+	return reqs
 
 
 static func reason_text(check: Check) -> String:
@@ -162,6 +185,8 @@ static func reason_text(check: Check) -> String:
 			return "Cannot build on this terrain."
 		Reason.OCCUPIED:
 			return "Cell already occupied."
+		Reason.OCCUPIED_BY_UNIT:
+			return "Enemy units in the way."
 		Reason.INSUFFICIENT_CREDITS:
 			return "Insufficient credits."
 		Reason.BLOCKS_ROUTE:
@@ -170,6 +195,11 @@ static func reason_text(check: Check) -> String:
 				var label := MovementClass.to_name(route["movement"]).to_upper()
 				if not names.has(label):
 					names.append(label)
+			var trapped := false
+			for route in check.broken_routes:
+				trapped = trapped or route.get("kind", "") == "unit"
+			if trapped:
+				return "Would trap enemies on the field (%s)." % ", ".join(names)
 			return "Blocks every route to the base for: %s." % ", ".join(names)
 		Reason.NOTHING_TO_REMOVE:
 			return "Nothing to remove here."

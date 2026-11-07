@@ -7,14 +7,26 @@ extends Control
 signal tool_changed(data: StructureData, remove_mode: bool)
 signal restart_requested
 signal menu_requested
+## DEBUG (Milestone 2): start TestAssault. Replaced by the wave button in Milestone 4.
+signal assault_requested
 
 const PANEL_WIDTH := 400.0
 const TOP_BAR_HEIGHT := 76.0
+## Reference logical height (project viewport). The side panel must fit in it.
+const REFERENCE_HEIGHT := 1080.0
+const LEGEND_SHORT := {
+	MovementClass.INFANTRY: "INFANTRY",
+	MovementClass.WHEELED: "WHEELED",
+	MovementClass.TRACKED: "TRACKED",
+}
 
 var _session: GameSession
 var _credits_label: Label
 var _base_label: Label
 var _phase_label: Label
+var _enemy_label: Label
+var _assault_button: Button
+var _defeat_overlay: Control
 var _info_label: Label
 var _feedback_label: Label
 var _build_buttons: Array[Button] = []
@@ -38,7 +50,8 @@ func setup(session: GameSession, structures: Array[StructureData]) -> void:
 	_build_side_panel()
 	_build_pause_overlay()
 	_session.wallet.credits_changed.connect(_on_credits_changed)
-	_session.phase_changed.connect(func(_p: int) -> void: _refresh_status())
+	_session.phase_changed.connect(_on_phase_changed)
+	_session.base_hp_changed.connect(func(_hp: int, _max: int) -> void: _refresh_status())
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 	_refresh_status()
@@ -70,8 +83,6 @@ func _build_top_bar() -> void:
 	row.add_theme_constant_override("separation", 40)
 	_top_bar.add_child(row)
 
-	var title := UiTheme.label("IRON RAMPART", UiTheme.FONT_SIZE, Palette.MILITARY_GREEN.lightened(0.25))
-	row.add_child(title)
 	_credits_label = UiTheme.label("", UiTheme.FONT_SIZE, Palette.TACTICAL_GOLD)
 	row.add_child(_credits_label)
 	_base_label = UiTheme.label("")
@@ -79,6 +90,15 @@ func _build_top_bar() -> void:
 	_phase_label = UiTheme.label("")
 	_phase_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_phase_label)
+	_enemy_label = UiTheme.label("", UiTheme.FONT_SIZE, Palette.ALERT_RED.lightened(0.15))
+	row.add_child(_enemy_label)
+
+	_assault_button = Button.new()
+	_assault_button.text = "TEST ASSAULT"
+	_assault_button.tooltip_text = "Debug: spawns a fixed enemy column (waves arrive in Milestone 4)."
+	_assault_button.custom_minimum_size = Vector2(230, 0)
+	_assault_button.pressed.connect(func() -> void: assault_requested.emit())
+	row.add_child(_assault_button)
 
 	var pause := Button.new()
 	pause.text = "II  PAUSE"
@@ -134,42 +154,65 @@ func _build_side_panel() -> void:
 	col.add_child(_feedback_label)
 
 	col.add_child(UiTheme.label("ENEMY ROUTES", 18, Palette.MILITARY_GREEN.lightened(0.3)))
+	var legend_row := HBoxContainer.new()
+	legend_row.add_theme_constant_override("separation", 7)
 	for bit in MovementClass.ALL:
 		var color: Color = GridView.ROUTE_STYLE[bit]["color"]
-		var legend_row := HBoxContainer.new()
-		legend_row.add_theme_constant_override("separation", 12)
 		var swatch := ColorRect.new()
 		swatch.color = color
-		swatch.custom_minimum_size = Vector2(36, 6)
+		swatch.custom_minimum_size = Vector2(26, 6)
 		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		legend_row.add_child(swatch)
-		legend_row.add_child(UiTheme.label(MovementClass.to_name(bit).to_upper(), 18, color))
-		col.add_child(legend_row)
+		legend_row.add_child(UiTheme.label(LEGEND_SHORT[bit], 17, color))
+	col.add_child(legend_row)
 
 
 func _build_pause_overlay() -> void:
-	_pause_overlay = ColorRect.new()
-	(_pause_overlay as ColorRect).color = Color(Palette.OLIVE_BLACK, 0.85)
-	_pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_pause_overlay.visible = false
-	add_child(_pause_overlay)
+	_pause_overlay = _make_overlay("PAUSED", Palette.SANDSTONE, [
+			["RESUME", _set_paused.bind(false)],
+			["RESTART", func() -> void: restart_requested.emit()],
+			["MAIN MENU", func() -> void: menu_requested.emit()]])
+	_defeat_overlay = _make_overlay("HQ DESTROYED", Palette.ALERT_RED, [
+			["RESTART", func() -> void: restart_requested.emit()],
+			["MAIN MENU", func() -> void: menu_requested.emit()]])
+
+
+func _make_overlay(title_text: String, title_color: Color, entries: Array) -> Control:
+	var overlay := ColorRect.new()
+	overlay.color = Color(Palette.OLIVE_BLACK, 0.85)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.visible = false
+	add_child(overlay)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_pause_overlay.add_child(center)
+	overlay.add_child(center)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 20)
 	center.add_child(col)
-	var title := UiTheme.label("PAUSED", 64, Palette.SANDSTONE)
+	var title := UiTheme.label(title_text, 64, title_color)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
-	for entry in [["RESUME", _set_paused.bind(false)],
-			["RESTART", func() -> void: restart_requested.emit()],
-			["MAIN MENU", func() -> void: menu_requested.emit()]]:
+	for entry in entries:
 		var b := Button.new()
 		b.text = entry[0]
 		b.custom_minimum_size = Vector2(420, UiTheme.TOUCH_MIN_HEIGHT)
 		b.pressed.connect(entry[1])
 		col.add_child(b)
+	return overlay
+
+
+## Called every frame by Battle; only touches the label when the text changes.
+func set_enemy_status(alive: int, queued: int) -> void:
+	var text := "" if alive + queued == 0 else "ENEMIES  %d" % (alive + queued)
+	if _enemy_label.text != text:
+		_enemy_label.text = text
+
+
+func _on_phase_changed(phase: int) -> void:
+	_refresh_status()
+	_assault_button.disabled = phase != GameSession.Phase.BUILD
+	if phase == GameSession.Phase.DEFEAT:
+		_defeat_overlay.visible = true
 
 
 # --- Behaviour ---------------------------------------------------------------
@@ -225,9 +268,13 @@ func _on_credits_changed(_credits: int, _delta: int) -> void:
 func _refresh_status() -> void:
 	_credits_label.text = "CREDITS  %d" % _session.wallet.get_credits()
 	_base_label.text = "HQ  %d / %d" % [_session.base_hp, _session.level.base_max_hp]
-	var phase_name: String = GameSession.Phase.keys()[_session.phase]
-	# Waves arrive in Milestone 4; until then the mission is a sandbox build phase.
-	_phase_label.text = "%s  -  %s PHASE" % [_session.level.display_name.to_upper(), phase_name]
+	match _session.phase:
+		GameSession.Phase.DEFEAT:
+			_phase_label.text = "MISSION FAILED"
+		GameSession.Phase.VICTORY:
+			_phase_label.text = "MISSION COMPLETE"
+		_:
+			_phase_label.text = "%s PHASE" % GameSession.Phase.keys()[_session.phase]
 
 
 func _refresh_affordability() -> void:

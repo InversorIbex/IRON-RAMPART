@@ -9,101 +9,152 @@ las escenas solo renderizan y traducen input.**
 project.godot            Configuración (1920x1080 lógico, GL Compatibility, landscape)
 assets/                  Arte y audio finales (vacío: aún solo placeholders procedurales)
 data/
-  levels/*.json          Misiones (layout ASCII + parámetros)       -> LevelLoader
-  structures/*.tres      StructureData por estructura               -> StructureCatalog
+  levels/*.json          Misiones (layout ASCII + parámetros + reglas)  -> LevelLoader
+  structures/*.tres      StructureData                                  -> StructureCatalog
+  enemies/*.tres         EnemyData                                      -> EnemyCatalog
 scenes/
   menus/main_menu.tscn   Escena principal (run/main_scene)
   gameplay/battle.tscn   Misión jugable
+  enemies/enemy_view.tscn  Vista reutilizable de un enemigo (instanciada por EnemyLayer)
 scripts/
   core/                  Palette, GameSession (estado de una partida)
   grid/                  Terrain, GridModel, Placement
-  navigation/            MovementClass, NavGrid (AStarGrid2D por clase)
+  navigation/            MovementClass, NavGrid (campos de flujo por clase)
   construction/          StructureData, StructureCatalog, ConstructionService
+  enemies/               EnemyData, EnemyCatalog, Enemy, EnemyRoster, EnemyView
   economy/               Wallet
   levels/                LevelData, LevelLoader
-  gameplay/              Battle (controlador de escena), GridView (render)
+  gameplay/              Battle, GridView, EnemyLayer, BattleCamera, TestAssault (debug)
   ui/                    UiTheme, BattleHud
   menus/                 MainMenu
-tests/                   Runner headless + suites unitarias y smoke
-docs/                    Documentación
+tests/
+  run_tests.gd           Runner headless (admite pruebas con await)
+  unit/                  Suites unitarias + smoke de escenas
+  visual/                Recorridos E2E con render y capturas (drive_battle, drive_enemies)
+  perf/                  bench_enemies.gd (lógica headless o escena con render)
+docs/                    Documentación (.gdignore: Godot no la importa)
 ```
-
-Carpetas futuras (se crean cuando haya código real): `scripts/combat`, `scripts/waves`, `scripts/enemies`,
-`scripts/persistence`, `data/enemies`, `data/turrets`, `data/waves`.
 
 ## Sistemas y dependencias
 
 ```
 LevelLoader ──crea──> LevelData
                           │
-GameSession ──posee──> GridModel ◄── NavGrid (lee bloqueos; una AStarGrid2D por clase)
-     │                    ▲              ▲
-     ├──posee──> Wallet   │              │
-     └──posee──> ConstructionService ────┘  (única puerta para construir/retirar)
+GameSession ──posee──> GridModel ──señales placement_added/removed──> NavGrid (campos de flujo)
+     │                                                                   │ topology_changed
+     ├──posee──> Wallet                                                  ▼
+     ├──posee──> EnemyRoster ──lee next_step()──────────────────────── NavGrid
+     │               ▲ occupied_cells / route_requirements
+     └──posee──> ConstructionService ──valida con──> NavGrid.find_broken_routes
+                                     ──consulta──> EnemyRoster (opcional)
 
-Battle (Node2D) ──posee──> GameSession
-   ├── GridView (Node2D)   lee GameSession, escucha NavGrid.topology_changed
-   └── CanvasLayer/BattleHud (Control)  emite intenciones (tool_changed, restart, menu)
+Battle (Node2D) ──posee──> GameSession, TestAssault (debug)
+   ├── GridView (Node2D)  ─ terreno, estructuras, rutas (de NavGrid), fantasma
+   │     └── EnemyLayer (Node2D) ─ crea/libera EnemyView según señales de EnemyRoster
+   ├── BattleCamera (Camera2D) ─ zoom/pan
+   └── CanvasLayer/BattleHud (Control) ─ intenciones: tool_changed, assault_requested, restart, menu
 ```
 
-Sin dependencias circulares: los datos (`LevelData`, `StructureData`, `Placement`) no conocen servicios;
-los servicios no conocen nodos; las escenas conocen servicios.
+**Sin dependencias circulares** (auditado en el Hito 2): `GridModel` no conoce a nadie; `NavGrid` → `GridModel`;
+`EnemyRoster` → `GridModel`, `NavGrid`; `ConstructionService` → `GridModel`, `NavGrid`, `Wallet`, `EnemyRoster`;
+`GameSession` → todos. Ningún servicio conoce nodos.
+
+**Una sola fuente de verdad:** `GridModel` es la única verdad de bloqueo; `NavGrid` se sincroniza solo
+escuchando sus señales (antes dependía de llamadas manuales: hallazgo H1 de la auditoría).
 
 ## Componentes
 
 | Componente | Tipo | Responsabilidad |
 |---|---|---|
-| `LevelData` | RefCounted | Misión parseada: dimensiones, terreno, spawns, base, `goal_cell`, clases de movimiento, créditos |
-| `LevelLoader` | estático | JSON → `LevelData` con validación exhaustiva; errores acumulados y reportados con `push_error` |
-| `Terrain` | constantes | Tipos de terreno, leyenda ASCII, reglas (construible, máscara de bloqueo) |
-| `GridModel` | RefCounted | Terreno + ocupación (`Vector2i → Placement`), conversiones celda↔local, huellas multicelda |
-| `Placement` | RefCounted | Instancia colocada: datos, origen, celdas, vida |
+| `LevelData` / `LevelLoader` | RefCounted / estático | Misión JSON validada; reglas `allow_build_during_combat`, `allow_remove_during_combat` |
+| `Terrain`, `GridModel`, `Placement` | constantes / RefCounted | Terreno + ocupación, conversiones celda↔local, huellas multicelda |
 | `MovementClass` | constantes | Bits INFANTRY=1, WHEELED=2, TRACKED=4 |
-| `NavGrid` | RefCounted | Un `AStarGrid2D` por clase; `find_path`, `find_broken_routes` (simulación con restauración) |
-| `StructureData` | Resource | Coste, vida, huella, `blocks_mask`, reembolso, color placeholder, sprite opcional |
-| `StructureCatalog` | estático | Registro id → `.tres`, carga + validación |
-| `ConstructionService` | RefCounted | `evaluate` (solo lectura), `build`, `remove_at`; motivos de rechazo tipados |
-| `Wallet` | RefCounted | Créditos, nunca negativos |
-| `GameSession` | RefCounted | Agrega todo lo anterior + fase (BUILD/COMBAT/VICTORY/DEFEAT) y vida de la base |
-| `Battle` | Node2D | Carga misión, crea sesión, layout, input → comandos |
-| `GridView` | Node2D | Dibujo placeholder: terreno, estructuras, rutas por clase, fantasma de construcción |
-| `BattleHud` | Control | Barra superior, panel de construcción, feedback, pausa, áreas seguras |
+| `NavGrid` | RefCounted | Por clase: mapa transitable + **campo de flujo** (BFS desde la meta). `next_step`, `distance`, `path_to_goal`, `find_broken_routes` (simulación sin tocar los campos vivos) |
+| `StructureData` / `StructureCatalog` | Resource / estático | Estructuras: coste, vida, huella, `blocks_mask` |
+| `ConstructionService` | RefCounted | `evaluate` (solo lectura), `build`, `remove_at`. Requisitos de ruta = spawns × clases + **enemigos vivos** |
+| `EnemyData` / `EnemyCatalog` | Resource / estático | Vida, velocidad (celdas/s), blindaje (fracción), clase de movilidad, daño a base, recompensa, silueta |
+| `Enemy` | RefCounted | Estado de un enemigo: `cell → next_cell` + `progress`, estado (MOVING/BLOCKED/ARRIVED/DEAD) |
+| `EnemyRoster` | RefCounted | Spawn, `update(delta)`, daño, muertes, llegadas; señales `enemy_spawned/killed/reached_base/removed` |
+| `GameSession` | RefCounted | Agrega todo; fases; vida del HQ (`base_hp_changed`); recompensas; derrota; `tick(delta)` |
+| `Battle` | Node2D | Orquesta escena, input táctil/ratón, cámara, asalto de prueba |
+| `GridView` / `EnemyLayer` / `EnemyView` | Node2D | Render placeholder; `EnemyLayer.sync` actualiza todas las vistas en un bucle |
+| `BattleCamera` | Camera2D | Zoom 1×–3× en torno a un punto, pan con límites |
+| `BattleHud` | Control | Estado, panel de construcción, feedback, pausa, derrota, safe areas |
+| `TestAssault` | RefCounted | **Andamiaje de depuración** del Hito 2 (columna fija de 10 enemigos). Lo sustituye `WaveManager` en el Hito 4 |
+
+## Navegación (D-011)
+
+- **Campo de flujo por clase:** `dist[celda]` = pasos hasta la meta por celdas transitables (BFS, O(celdas)).
+  Se recalcula **solo** cuando cambia la topología (construir/retirar). Coste medido: ~0,33 ms para las tres
+  clases en 24×16 (TESTING.md).
+- **Enemigos:** ninguno busca caminos. Al llegar al centro de una celda consultan `next_step` (O(1)): el vecino
+  con `dist − 1` en orden fijo E, O, S, N (desempate determinista → rutas en L limpias).
+- **Ruta dibujada = ruta real:** `GridView` usa `path_to_goal`, que recorre el mismo campo.
+- **Validación de construcción:** se clona el mapa transitable de las clases afectadas, se marcan las celdas
+  candidatas y un BFS por clase responde para **todos** los requisitos (spawns + enemigos) a la vez. Los campos vivos
+  no se tocan.
+
+## Movimiento enemigo
+
+- Cada enemigo recorre el segmento `cell → next_cell` (centro a centro) a `speed` celdas/s; `progress ∈ [0,1)`.
+- **Segmento comprometido:** construcción rechaza `cell` y `next_cell` de cualquier enemigo (`OCCUPIED_BY_UNIT`), así
+  que un cambio de laberinto nunca invalida el tramo en curso. El cambio se aplica en el siguiente centro de celda:
+  sin teletransportes, sin atravesar muros, sin recálculos por fotograma.
+- **Encerrar enemigos está prohibido:** cada enemigo vivo es un requisito de ruta desde su `next_cell`.
+- **Ruta perdida (defensivo):** si aun así una celda queda sin ruta (p. ej. mutación directa del grid), el enemigo
+  pasa a `BLOCKED`, se detiene en el centro de la celda y se reevalúa en el siguiente `topology_changed`.
+- **Llegada:** al entrar en cualquier celda `B`, `ARRIVED` → `GameSession` resta `base_damage` al HQ → si llega a 0, `DEFEAT`
+  (la simulación se congela).
+- **Muerte:** `EnemyRoster.damage()` aplica `amount × (1 − armor)`; a hp ≤ 0 → `DEAD`, recompensa al `Wallet`, vista con
+  animación de salida. (Aún no hay fuente de daño en juego: llega con las torretas en el Hito 3.)
 
 ## Flujo de construcción
 
-1. HUD emite `tool_changed(data, remove_mode)` → `Battle` guarda la herramienta.
-2. Movimiento del puntero → `Battle._update_cursor` (solo si cambia la celda) → `ConstructionService.evaluate`
-   → `GridView.set_ghost(check)` (verde/rojo, spawns afectados marcados).
-3. Soltar sobre el mapa → `ConstructionService.build`:
-   límites → terreno → ocupación → créditos → rutas (`NavGrid.find_broken_routes` simulado).
-   Si algo falla: **no se toca nada** y se devuelve el motivo.
-4. Si es válido: `Wallet.spend` → `GridModel.add_placement` → `NavGrid.refresh_cells` → `topology_changed`
-   → `GridView` recalcula y redibuja rutas.
+1. HUD emite `tool_changed` → `Battle` guarda la herramienta.
+2. Puntero sobre el mapa → `ConstructionService.evaluate` → `GridView.set_ghost` (verde/rojo, celdas afectadas marcadas).
+   Con enemigos en movimiento la previsualización se revalida cada 0,2 s.
+3. Soltar → `build`: límites → terreno → ocupación → enemigos encima → créditos → rutas (spawns + enemigos).
+4. Si es válido: `Wallet.spend` → `GridModel.add_placement` → (señal) `NavGrid` recalcula → `topology_changed` →
+   `GridView` redibuja rutas; los enemigos usan el nuevo campo en su próxima celda.
+
+## Input y cámara (Fase D del Hito 2)
+
+| Gesto | Sin herramienta | Con herramienta |
+|---|---|---|
+| 1 dedo: tocar/arrastrar/soltar | arrastrar = desplazar mapa | apuntar; soltar = construir |
+| 2 dedos | pellizco = zoom, arrastre = desplazar; **cancela la construcción en curso** | igual |
+| Ratón | rueda = zoom en cursor; botón central = desplazar; izq. arrastrando sin herramienta = desplazar | izq. = apuntar/soltar; der./Esc = cancelar |
+
+Con `emulate_mouse_from_touch`, el dedo 0 también genera eventos de ratón: mientras hay gesto multitáctil se ignoran
+(nunca construyen). Toques que empiezan sobre el HUD no inician gestos.
 
 ## Señales relevantes
 
 | Emisor | Señal | Consumidores |
 |---|---|---|
-| `NavGrid` | `topology_changed(version)` | `GridView` (rutas); enemigos en Hito 2 (re-path) |
-| `GridModel` | `placement_added/removed(placement)` | futuro: nodos visuales por estructura, audio |
-| `ConstructionService` | `structure_built/removed` | futuro: efectos, estadísticas |
-| `Wallet` | `credits_changed(credits, delta)` | `BattleHud` |
-| `GameSession` | `phase_changed(phase)` | `BattleHud`; futuro `WaveManager` |
-| `BattleHud` | `tool_changed`, `restart_requested`, `menu_requested` | `Battle` |
+| `GridModel` | `placement_added/removed` | `NavGrid` (sincronización) |
+| `NavGrid` | `topology_changed(version)` | `GridView` (rutas), `EnemyRoster` (reintento de bloqueados) |
+| `EnemyRoster` | `enemy_spawned` | `EnemyLayer` |
+| `EnemyRoster` | `enemy_killed` | `GameSession` (recompensa), `EnemyLayer` |
+| `EnemyRoster` | `enemy_reached_base` | `GameSession` (daño HQ), `EnemyLayer` |
+| `ConstructionService` | `structure_built/removed` | futuro: efectos, audio |
+| `Wallet` | `credits_changed` | `BattleHud` |
+| `GameSession` | `phase_changed`, `base_hp_changed` | `BattleHud` |
+| `BattleHud` | `tool_changed`, `assault_requested`, `restart_requested`, `menu_requested` | `Battle` |
+
+Rendimiento de señales: ninguna se emite por enemigo y fotograma; solo en eventos (spawn, muerte, llegada, cambio de topología).
 
 ## Reglas para añadir contenido
 
-- **Nueva estructura:** crear `data/structures/<id>.tres` (`StructureData`) + una línea en `StructureCatalog.PATHS`
-  + añadir el id a `available_structures` de los niveles. Si su forma placeholder debe ser distinta, un caso en
-  `GridView._draw_structure_shape`. Ningún otro sistema cambia.
-- **Nuevo nivel:** nuevo `data/levels/*.json`. El loader valida conectividad inicial.
-- **Nueva clase de movimiento:** añadir bit en `MovementClass` (y en `ALL`), el flag en `StructureData.blocks_mask`
-  y su estilo en `GridView.ROUTE_STYLE`. `NavGrid` crea la capa automáticamente.
+- **Nuevo enemigo terrestre:** `data/enemies/<id>.tres` (`EnemyData`) + una línea en `EnemyCatalog.PATHS`. Si su silueta
+  existe, no hace falta código. Si es de una clase de movimiento nueva, ver abajo.
+- **Nueva estructura:** `data/structures/<id>.tres` + una línea en `StructureCatalog.PATHS` + id en `available_structures`.
+- **Nuevo nivel:** `data/levels/*.json`; el loader valida conectividad.
+- **Nueva clase de movimiento:** bit en `MovementClass` (y en `ALL`), flag en `StructureData.blocks_mask`, opción en
+  `EnemyData.movement`, estilo en `GridView.ROUTE_STYLE` y `BattleHud.LEGEND_SHORT`. `NavGrid` crea su campo automáticamente.
 
-## Preparado para el Hito 2 (no implementado)
+## Pendiente de diseño (no implementado)
 
-- Enemigos: seguirán `NavGrid.find_path(clase, celda_actual, goal)`; al recibir `topology_changed`
-  recalculan desde la **siguiente celda** de su recorrido (sin teletransportes). Movimiento interpolado entre centros de celda.
-- Construir durante combate: requerirá además rechazar celdas ocupadas por enemigos y comprobar que todo enemigo
-  en el mapa conserva ruta. Por eso, hoy la construcción solo se permite en fase BUILD.
-- Unidades multicelda: capa adicional por "tamaño" (mapa de holgura/clearance) en `NavGrid`.
+- **Unidades aéreas:** ignoran el laberinto; movimiento directo o campo propio sin obstáculos de tierra.
+- **Unidades multicelda:** campo de flujo por tamaño usando un mapa de holgura (clearance).
+- **Obstáculos destruibles / tanques aplastando sacos:** el mismo flujo `placement_removed → recálculo` ya lo soporta.

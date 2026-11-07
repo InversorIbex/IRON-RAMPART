@@ -87,6 +87,7 @@ static func parse_dict(d: Dictionary, source: String = "<memory>") -> Result:
 	if typeof(rules) != TYPE_DICTIONARY:
 		errors.append("'rules' must be an object")
 	else:
+		level.allow_build_during_combat = bool(rules.get("allow_build_during_combat", true))
 		level.allow_remove_during_combat = bool(rules.get("allow_remove_during_combat", false))
 
 	# --- Layout ---
@@ -95,10 +96,13 @@ static func parse_dict(d: Dictionary, source: String = "<memory>") -> Result:
 	# --- Connectivity (only meaningful if the layout itself is valid) ---
 	if errors.is_empty():
 		var grid := GridModel.new(level)
-		var nav := NavGrid.new(grid)
-		for route in nav.find_broken_routes(level.spawn_cells, level.goal_cell, level.movement_mask):
-			errors.append("spawn %s has no route to the base for '%s'"
-					% [route["spawn"], MovementClass.to_name(route["movement"])])
+		var nav := NavGrid.new(grid, level.goal_cell)
+		for bit in MovementClass.ALL:
+			if level.movement_mask & bit:
+				for spawn in level.spawn_cells:
+					if not nav.can_reach_goal(bit, spawn):
+						errors.append("spawn %s has no route to the base for '%s'"
+								% [spawn, MovementClass.to_name(bit)])
 
 	if not errors.is_empty():
 		if report_errors:
