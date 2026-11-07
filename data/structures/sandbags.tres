@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="StructureData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/construction/structure_data.gd" id="1_sdata"]
+
+[resource]
+script = ExtResource("1_sdata")
+id = &"sandbags"
+display_name = "Sandbags"
+description = "Cheap, fast cover. Stops infantry and wheeled vehicles. Heavy tracked vehicles roll straight over it."
+category = 0
+cost = 10
+max_hp = 60
+footprint = Vector2i(1, 1)
+blocks_mask = 3
+refund_ratio = 0.75
+placeholder_color = Color(0.6471, 0.6471, 0.5451, 1)

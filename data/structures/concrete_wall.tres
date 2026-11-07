@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="StructureData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/construction/structure_data.gd" id="1_sdata"]
+
+[resource]
+script = ExtResource("1_sdata")
+id = &"concrete_wall"
+display_name = "Concrete Wall"
+description = "Reinforced barrier. Stops every ground unit. The backbone of any maze."
+category = 0
+cost = 25
+max_hp = 400
+footprint = Vector2i(1, 1)
+blocks_mask = 7
+refund_ratio = 0.75
+placeholder_color = Color(0.55, 0.55, 0.52, 1)
